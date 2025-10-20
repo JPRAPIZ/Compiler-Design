@@ -1,14 +1,14 @@
-    #include <stdio.h>
-    #include <stdlib.h>
-    #include <ctype.h>
-    #include <string.h>
-    #include "tokens.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <string.h>
+#include "tokens.h"
 
-    typedef struct {
-        TOKEN_TYPE type;
-        char lexeme[15];
-        int line;
-    }Token;
+typedef struct {
+    TOKEN_TYPE type;
+    char lexeme[100]; // Increased buffer size to be safe
+    int line;
+} Token;
 
 typedef struct {
     const char* src;
@@ -19,6 +19,7 @@ typedef struct {
 // Helper to peek at the next character without advancing
 char peek(Lexer* lexer) {
     if (lexer->src[lexer->pos] == '\0') return '\0';
+    // NOTE: This peeks at the character that is *after* the current one
     return lexer->src[lexer->pos + 1];
 }
 
@@ -141,40 +142,77 @@ Token next_token(Lexer* lexer) {
         return make_token(lexer, NUMBER, lexeme);
     }
 
-    // --- NEW: ALL OPERATORS AND SYMBOLS ---
-    advance(lexer); // Consume the current character
+    // --- FIXED: OPERATOR AND SYMBOL LOGIC ---
+    // The logic is changed to peek first, then advance.
     switch (c) {
-        // Single characters
-        case '(': return make_token(lexer, TOK_OP_PARENTHESES, "(");
-        case ')': return make_token(lexer, TOK_CL_PARENTHESES, ")");
-        case '{': return make_token(lexer, TOK_OP_BRACE, "{");
-        case '}': return make_token(lexer, TOK_CL_BRACE, "}");
-        case '[': return make_token(lexer, TOK_OP_BRACKET, "[");
-        case ']': return make_token(lexer, TOK_CL_BRACKET, "]");
-        case ';': return make_token(lexer, TOK_SEMICOLON, ";");
-        case ':': return make_token(lexer, TOK_COLON, ":");
-        case ',': return make_token(lexer, TOK_COMMA, ",");
-        case '.': return make_token(lexer, TOK_PERIOD, ".");
-        case '%': return make_token(lexer, TOK_MODULO, "%");
-        case '\'': return make_token(lexer, TOK_SNGL_QUOTE, "'");
-        case '"': return make_token(lexer, TOK_DBL_QUOTE, "\"");
+        // Single characters that don't start a multi-character token
+        case '(': advance(lexer); return make_token(lexer, TOK_OP_PARENTHESES, "(");
+        case ')': advance(lexer); return make_token(lexer, TOK_CL_PARENTHESES, ")");
+        case '{': advance(lexer); return make_token(lexer, TOK_OP_BRACE, "{");
+        case '}': advance(lexer); return make_token(lexer, TOK_CL_BRACE, "}");
+        case '[': advance(lexer); return make_token(lexer, TOK_OP_BRACKET, "[");
+        case ']': advance(lexer); return make_token(lexer, TOK_CL_BRACKET, "]");
+        case ';': advance(lexer); return make_token(lexer, TOK_SEMICOLON, ";");
+        case ':': advance(lexer); return make_token(lexer, TOK_COLON, ":");
+        case ',': advance(lexer); return make_token(lexer, TOK_COMMA, ",");
+        case '.': advance(lexer); return make_token(lexer, TOK_PERIOD, ".");
+        case '%': advance(lexer); return make_token(lexer, TOK_MODULO, "%");
+        case '\'': advance(lexer); return make_token(lexer, TOK_SNGL_QUOTE, "'");
+        case '"': advance(lexer); return make_token(lexer, TOK_DBL_QUOTE, "\"");
 
-        // Single or double characters
-        case '!': return peek(lexer) == '=' ? (advance(lexer), make_token(lexer, TOK_NOT_EQUAL, "!=")) : make_token(lexer, TOK_NOT, "!");
-        case '=': return peek(lexer) == '=' ? (advance(lexer), make_token(lexer, TOK_EQUALS, "==")) : make_token(lexer, TOK_ASSIGN, "=");
-        case '+': return peek(lexer) == '+' ? (advance(lexer), make_token(lexer, TOK_INCREMENT, "++")) : (peek(lexer) == '=' ? (advance(lexer), make_token(lexer, TOK_ADD_ASSIGN, "+=")) : make_token(lexer, TOK_PLUS, "+"));
-        case '-': return peek(lexer) == '-' ? (advance(lexer), make_token(lexer, TOK_DECREMENT, "--")) : (peek(lexer) == '=' ? (advance(lexer), make_token(lexer, TOK_SUB_ASSIGN, "-=")) : make_token(lexer, TOK_MINUS, "-"));
-        case '*': return peek(lexer) == '=' ? (advance(lexer), make_token(lexer, TOK_MUL_ASSIGN, "*=")) : make_token(lexer, TOK_MULTIPLY, "*");
-        case '/': return peek(lexer) == '=' ? (advance(lexer), make_token(lexer, TOK_DIV_ASSIGN, "/=")) : make_token(lexer, TOK_DIVIDE, "/");
-        case '<': return peek(lexer) == '=' ? (advance(lexer), make_token(lexer, TOK_LT_EQUAL, "<=")) : make_token(lexer, TOK_LESS_THAN, "<");
-        case '>': return peek(lexer) == '=' ? (advance(lexer), make_token(lexer, TOK_GT_EQUAL, ">=")) : make_token(lexer, TOK_GREATER_THAN, ">");
+        // Characters that COULD start a multi-character token
+        case '!':
+            if (peek(lexer) == '=') { advance(lexer); advance(lexer); return make_token(lexer, TOK_NOT_EQUAL, "!="); }
+            advance(lexer); return make_token(lexer, TOK_NOT, "!");
+        case '=':
+            if (peek(lexer) == '=') { advance(lexer); advance(lexer); return make_token(lexer, TOK_EQUALS, "=="); }
+            advance(lexer); return make_token(lexer, TOK_ASSIGN, "=");
+        case '+':
+            if (peek(lexer) == '+') { advance(lexer); advance(lexer); return make_token(lexer, TOK_INCREMENT, "++"); }
+            if (peek(lexer) == '=') { advance(lexer); advance(lexer); return make_token(lexer, TOK_ADD_ASSIGN, "+="); }
+            advance(lexer); return make_token(lexer, TOK_PLUS, "+");
+        case '-':
+            // NEW: Check for negative number
+            if (isdigit(peek(lexer))) {
+                advance(lexer); // Consume '-'
+                while (isdigit(lexer->src[lexer->pos])) {
+                    lexer->pos++;
+                }
+                size_t len = lexer->pos - start;
+                char lexeme[len + 1];
+                strncpy(lexeme, lexer->src + start, len);
+                lexeme[len] = '\0';
+                return make_token(lexer, NUMBER, lexeme);
+            }
+            // Check for other tokens starting with '-'
+            if (peek(lexer) == '-') { advance(lexer); advance(lexer); return make_token(lexer, TOK_DECREMENT, "--"); }
+            if (peek(lexer) == '=') { advance(lexer); advance(lexer); return make_token(lexer, TOK_SUB_ASSIGN, "-="); }
+            advance(lexer); return make_token(lexer, TOK_MINUS, "-");
+        case '*':
+            if (peek(lexer) == '=') { advance(lexer); advance(lexer); return make_token(lexer, TOK_MUL_ASSIGN, "*="); }
+            advance(lexer); return make_token(lexer, TOK_MULTIPLY, "*");
+        case '/':
+            // Note: comment logic in skip_whitespace handles / and //
+            if (peek(lexer) == '=') { advance(lexer); advance(lexer); return make_token(lexer, TOK_DIV_ASSIGN, "/="); }
+            advance(lexer); return make_token(lexer, TOK_DIVIDE, "/");
+        case '<':
+            if (peek(lexer) == '=') { advance(lexer); advance(lexer); return make_token(lexer, TOK_LT_EQUAL, "<="); }
+            advance(lexer); return make_token(lexer, TOK_LESS_THAN, "<");
+        case '>':
+            if (peek(lexer) == '=') { advance(lexer); advance(lexer); return make_token(lexer, TOK_GT_EQUAL, ">="); }
+            advance(lexer); return make_token(lexer, TOK_GREATER_THAN, ">");
         
         // Logical operators
-        case '&': return peek(lexer) == '&' ? (advance(lexer), make_token(lexer, TOK_AND, "&&")) : make_token(lexer, TOK_AMPERSAND, "&");
-        case '|': return peek(lexer) == '|' ? (advance(lexer), make_token(lexer, TOK_OR, "||")) : make_token(lexer, TOK_UNKNOWN, "|");
+        case '&':
+            if (peek(lexer) == '&') { advance(lexer); advance(lexer); return make_token(lexer, TOK_AND, "&&"); }
+            advance(lexer); return make_token(lexer, TOK_AMPERSAND, "&");
+        case '|':
+            if (peek(lexer) == '|') { advance(lexer); advance(lexer); return make_token(lexer, TOK_OR, "||"); }
+            advance(lexer); return make_token(lexer, TOK_UNKNOWN, "|");
     }
 
     // If no match is found
+    advance(lexer); // Consume the unknown character
     char unknown[2] = {c, '\0'};
     return make_token(lexer, TOK_UNKNOWN, unknown);
 }
@@ -182,8 +220,21 @@ Token next_token(Lexer* lexer) {
 
 // A helper to print token types cleanly
 const char* token_type_to_string(TOKEN_TYPE type) {
-    // This function can be expanded to include all token types for nice printing
+    // Expanded this to include all tokens for better debugging
     switch (type) {
+        // Keywords
+        case TOK_TILE: return "TOK_TILE";
+        case TOK_GLASS: return "TOK_GLASS";
+        case TOK_BRICK: return "TOK_BRICK";
+        case TOK_BEAM: return "TOK_BEAM";
+        case TOK_IF: return "TOK_IF";
+        case TOK_VIEW: return "TOK_VIEW";
+
+        // Literals
+        case IDENTIFIER: return "IDENTIFIER";
+        case NUMBER: return "NUMBER";
+        
+        // Operators
         case TOK_PLUS: return "TOK_PLUS";
         case TOK_MINUS: return "TOK_MINUS";
         case TOK_MULTIPLY: return "TOK_MULTIPLY";
@@ -205,32 +256,38 @@ const char* token_type_to_string(TOKEN_TYPE type) {
         case TOK_AND: return "TOK_AND";
         case TOK_OR: return "TOK_OR";
         case TOK_NOT: return "TOK_NOT";
-        case TOK_TILE: return "TOK_TILE";
-        case TOK_GLASS: return "TOK_GLASS";
-        case TOK_BRICK: return "TOK_BRICK";
-        case TOK_BEAM: return "TOK_BEAM";
-        case IDENTIFIER: return "IDENTIFIER";
-        case NUMBER: return "NUMBER";
-        case TOK_IF: return "TOK_IF";
+        case TOK_AMPERSAND: return "TOK_AMPERSAND";
+
+        // Symbols
         case TOK_SEMICOLON: return "TOK_SEMICOLON";
         case TOK_OP_BRACE: return "TOK_OP_BRACE";
         case TOK_CL_BRACE: return "TOK_CL_BRACE";
         case TOK_OP_PARENTHESES: return "TOK_OP_PARENTHESES";
         case TOK_CL_PARENTHESES: return "TOK_CL_PARENTHESES";
+        
+        // Misc
         case TOK_EOF: return "TOK_EOF";
         default: return "TOK_UNKNOWN";
     }
 }
 
-    int main() {
-        // Test input
-        const char* input = "beam num = 50 + 20;";
-        Lexer lexer = {input, 0, 1}; // Initialize lexer, starting at line 1
+
+int main() {
+    // NEW: Updated test case for negative numbers and minus operator
+    const char* input = 
+        "tile result = 50 - 10;\n" // Test for minus operator
+        "tile neg_val = -25;\n"      // Test for negative number
+        "if (neg_val <= -20) {\n"
+        "  view(neg_val);\n"
+        "}\n";
+
+    Lexer lexer = {input, 0, 1}; // Initialize lexer, starting at line 1
     Token token;
 
     printf("--- Lexing Input ---\n%s\n--------------------\n", input);
     do {
         token = next_token(&lexer);
+        // Correctly using the helper function for clean output
         printf("Type: %-20s Lexeme: '%s'\t(Line: %d)\n",
             token_type_to_string(token.type),
             token.lexeme,
@@ -240,3 +297,4 @@ const char* token_type_to_string(TOKEN_TYPE type) {
 
     return 0;
 }
+
