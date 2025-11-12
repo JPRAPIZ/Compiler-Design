@@ -1,28 +1,29 @@
-# serverV2.py
+# ---- imports (same) ----
 from __future__ import annotations
 import os
 import sys
-from typing import Any, Dict  # <-- needed for type hints
+from typing import Any, Dict
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# --- ensure we can import the local lexer package (as a package) ---
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
-    sys.path.insert(0, HERE)  # add backend/ to sys.path
+    sys.path.insert(0, HERE)
 
-# Now import from the package
 from dfa_lexer_pkg import config as CFG
 from dfa_lexer_pkg.lexer import Lexer
 from dfa_lexer_pkg.token_types import TokenType
+
+# --- diagnostics: show exactly which lexer file is loaded ---
+import dfa_lexer_pkg.lexer as LEXMOD
+print("Using lexer module file:", getattr(LEXMOD, "__file__", "<unknown>"))
 
 app = Flask(__name__)
 CORS(app)
 
 
 def apply_runtime_config(cfg_in: Dict[str, Any]) -> Dict[str, Any]:
-    """Optionally override limits at runtime per-request."""
     snapshot = {
         "IDENT_MAX_LEN": CFG.IDENT_MAX_LEN,
         "INT_MAX_DIGITS": CFG.INT_MAX_DIGITS,
@@ -31,7 +32,6 @@ def apply_runtime_config(cfg_in: Dict[str, Any]) -> Dict[str, Any]:
         "EMIT_TOKEN_ON_LENGTH_ERROR": CFG.EMIT_TOKEN_ON_LENGTH_ERROR,
         "CASE_SENSITIVE_KEYWORDS": CFG.CASE_SENSITIVE_KEYWORDS,
     }
-
     if not cfg_in:
         return snapshot
 
@@ -61,6 +61,43 @@ def health():
     return jsonify({"ok": True})
 
 
+def _scan_all_tokens(lex: Lexer):
+    """
+    Works with any of these lexer APIs:
+      - tokenize_all()
+      - __iter__()
+      - get_next_token()
+    """
+    # 1) Preferred: tokenize_all
+    if hasattr(lex, "tokenize_all") and callable(getattr(lex, "tokenize_all")):
+        return lex.tokenize_all()
+
+    # 2) Iterator protocol
+    if hasattr(lex, "__iter__"):
+        try:
+            return list(iter(lex))
+        except TypeError:
+            pass  # not actually iterable
+
+    # 3) Fallback: manual loop via get_next_token
+    if hasattr(lex, "get_next_token") and callable(getattr(lex, "get_next_token")):
+        out = []
+        while True:
+            t = lex.get_next_token()
+            out.append(t)
+            # TokenType may be an Enum, name is TOK_EOF
+            eof = getattr(t, "type", None)
+            if eof == TokenType.TOK_EOF or getattr(eof, "name", None) == "TOK_EOF":
+                break
+        return out
+
+    # If none are available, fail clearly
+    raise RuntimeError(
+        "Loaded Lexer does not expose tokenize_all(), __iter__(), or get_next_token(). "
+        f"Module path: {getattr(LEXMOD, '__file__', '<unknown>')}"
+    )
+
+
 @app.post("/lex")
 def lex():
     data = request.get_json(force=True) or {}
@@ -70,12 +107,12 @@ def lex():
     effective_cfg = apply_runtime_config(data.get("config", {}))
 
     L = Lexer(data["code"])
-    tokens = L.tokenize_all()
+    tokens = _scan_all_tokens(L)
 
     tokens_out = [{
         "type": t.type.name if isinstance(t.type, TokenType) else str(t.type),
         "lexeme": t.lexeme,
-        "value": t.value,
+        "value": getattr(t, "value", None),
         "line": t.line,
         "col": t.col,
     } for t in tokens]
@@ -84,12 +121,12 @@ def lex():
         "index": i,
         "type": t.type.name if isinstance(t.type, TokenType) else str(t.type),
         "lexeme": t.lexeme,
-        "trace": t.trace or []
+        "trace": getattr(t, "trace", None) or []
     } for i, t in enumerate(tokens)]
 
     return jsonify({
         "tokens": tokens_out,
-        "errors": L.errors,
+        "errors": getattr(L, "errors", []),
         "backend": {
             "traces": traces_out,
             "config_used": effective_cfg

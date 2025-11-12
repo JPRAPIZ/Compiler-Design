@@ -62,49 +62,119 @@ def _whitespace_only(ch):
     # some ladders literally label "whitespace" at the end
     return _is_ws(ch) or ch is None
 
-# Token -> delimiter rule (from your TD labels)
+# ---------- STRICT LOOKAHEAD HELPERS ----------
+def _skip_ws_peek(lex):
+    """
+    Return first NON-whitespace char ahead (without consuming).
+    None if EOF.
+    """
+    i = lex.pos
+    n = len(lex.src)
+    while i < n and lex.src[i] in WS:
+        i += 1
+    return None if i >= n else lex.src[i]
+
+def _delim1_strict(lex, _next_immediate_char_unused):
+    # TD: delim1 = { ( , whitespace }  -> after optional WS, next must be '(' (or EOF)
+    ch = _skip_ws_peek(lex)
+    return ch in ('(', None)
+
+def _delim2_strict(lex, _next_immediate_char_unused):
+    # TD: delim2 = { ; , whitespace }  -> after optional WS, next must be ';' (or EOF)
+    ch = _skip_ws_peek(lex)
+    return ch in (';', None)
+
+def _delim3_strict(lex, _next_immediate_char_unused):
+    # TD: delim3 = { { , whitespace }  -> after optional WS, next must be '{' (or EOF)
+    ch = _skip_ws_peek(lex)
+    return ch in ('{', None)
+
+def _delim5_strict(lex, _next_immediate_char_unused):
+    # TD: delim5 = { : , whitespace }  -> after optional WS, next must be ':' (or EOF)
+    ch = _skip_ws_peek(lex)
+    return ch in (':', None)
+
+# ---------- IMMEDIATE DELIMS WITH (lex, ch) SIGNATURE ----------
+def _imm_delim1(lex, ch):   return _delim1(ch)
+def _imm_delim2(lex, ch):   return _delim2(ch)
+def _imm_delim3(lex, ch):   return _delim3(ch)
+def _imm_delim4(lex, ch):   return _delim4(ch)
+def _imm_delim5(lex, ch):   return _delim5(ch)
+def _imm_delim6(lex, ch):   return _delim6(ch)
+def _imm_delim7(lex, ch):   return _delim7(ch)
+def _imm_delim8(lex, ch):   return _delim8(ch)
+def _imm_delim9(lex, ch):   return _delim9(ch)
+def _imm_delim10(lex, ch):  return _delim10(ch)
+def _imm_delim11(lex, ch):  return _delim11(ch)
+def _imm_delim12(lex, ch):  return _delim12(ch)
+def _imm_delim13(lex, ch):  return _delim13(ch)
+def _imm_delim14(lex, ch):  return _delim14(ch)
+def _imm_delim15(lex, ch):  return _delim15(ch)
+def _imm_delim16(lex, ch):  return _delim16(ch)
+def _imm_delim17(lex, ch):  return _delim17(ch)
+def _imm_delim18(lex, ch):  return _delim18(ch)
+def _imm_delim19(lex, ch):  return _delim19(ch)
+def _imm_delim20(lex, ch):  return _delim20(ch)
+def _imm_delim21(lex, ch):  return _delim21(ch)
+def _imm_delim22(lex, ch):  return _delim22(ch)
+def _imm_delim23(lex, ch):  return _delim23(ch)
+def _imm_delim24(lex, ch):  return _delim24(ch)
+def _imm_delim25(lex, ch):  return _delim25(ch)
+
+def _ws_only(lex, ch):      return _whitespace_only(ch)
+
+# ---------- TOKEN -> DELIMITER PREDICATE (STRICT WHERE TD REQUIRES) ----------
 _TOKEN_DELIM = {
     # identifiers & literals (from "Others" table)
-    TokenType.IDENTIFIER:        _delim20,
-    TokenType.NUMBER:            _delim21,  # Tile_Literal (integer form)
-    TokenType.GLASS_NUMBER:      _delim22,  # Glass_Literal (float form)
-    TokenType.TOK_BRICK_LITERAL: _delim23,
-    TokenType.TOK_WALL_LITERAL:  _delim24,
+    TokenType.IDENTIFIER:        _imm_delim20,
+    TokenType.NUMBER:            _imm_delim21,  # Tile_Literal (integer form)
+    TokenType.GLASS_NUMBER:      _imm_delim22,  # Glass_Literal (float form)
+    TokenType.TOK_BRICK_LITERAL: _imm_delim23,
+    TokenType.TOK_WALL_LITERAL:  _imm_delim24,
 
-    # keywords
-    TokenType.TOK_BEAM:      _delim1,
-    TokenType.TOK_BLUEPRINT: _delim1,
-    TokenType.TOK_BRICK:     _whitespace_only,
-    TokenType.TOK_CEMENT:    _whitespace_only,
-    TokenType.TOK_CRACK:     _delim2,
-    TokenType.TOK_DO:        _delim3,
-    TokenType.TOK_ELSE:      _whitespace_only,
-    TokenType.TOK_FOR:       _delim1,
-    TokenType.TOK_FIELD:     _whitespace_only,
-    TokenType.TOK_FRAGILE:   _delim4,
-    TokenType.TOK_GLASS:     _whitespace_only,
-    TokenType.TOK_GROUND:    _delim5,
-    TokenType.TOK_HOME:      _whitespace_only,
-    TokenType.TOK_HOUSE:     _whitespace_only,
-    TokenType.TOK_IF:        _delim1,
-    TokenType.TOK_MEND:      _delim2,
-    TokenType.TOK_ROOF:      _whitespace_only,
-    TokenType.TOK_ROOM:      _whitespace_only,
-    TokenType.TOK_TILE:      _whitespace_only,
-    TokenType.TOK_VIEW:      _delim1,
-    TokenType.TOK_WALL:      _whitespace_only,
-    TokenType.TOK_WHILE:     _delim1,
-    TokenType.TOK_WRITE:     _delim1,
+    # keywords — strict vs immediate per the TD
+    # Must be '(' after optional WS (delim1 strict)
+    TokenType.TOK_BLUEPRINT: _delim1_strict,
+    TokenType.TOK_FOR:       _delim1_strict,
+    TokenType.TOK_WHILE:     _delim1_strict,
+    TokenType.TOK_WRITE:     _delim1_strict,
+    TokenType.TOK_VIEW:      _delim1_strict,
+    TokenType.TOK_IF:        _delim1_strict,
 
-    # whitespace tokens themselves end with delim25 per your last sheet
-    TokenType.TOK_SPACE:    _delim25,
-    TokenType.TOK_TAB:      _delim25,
-    TokenType.TOK_NEWLINE:  _delim25,
+    # Must be ';' after optional WS (delim2 strict)
+    TokenType.TOK_CRACK:     _delim2_strict,
+    TokenType.TOK_MEND:      _delim2_strict,
+
+    # Must be '{' after optional WS (delim3 strict)
+    TokenType.TOK_DO:        _delim3_strict,
+
+    # Must be ':' after optional WS (delim5 strict)
+    TokenType.TOK_GROUND:    _delim5_strict,
+
+    # Whitespace-only endings (per diagram)
+    TokenType.TOK_BRICK:     _ws_only,
+    TokenType.TOK_CEMENT:    _ws_only,
+    TokenType.TOK_ELSE:      _ws_only,
+    TokenType.TOK_FIELD:     _ws_only,
+    TokenType.TOK_GLASS:     _ws_only,
+    TokenType.TOK_HOME:      _ws_only,
+    TokenType.TOK_HOUSE:     _ws_only,
+    TokenType.TOK_ROOF:      _ws_only,
+    TokenType.TOK_ROOM:      _ws_only,
+    TokenType.TOK_TILE:      _ws_only,
+    TokenType.TOK_SOLID:     _ws_only,
+    TokenType.TOK_FRAGILE:   _imm_delim4,   # your table says delim4 after 'fragile'
+    TokenType.TOK_WALL:      _ws_only,
+
+    # whitespace tokens themselves end with delim25 per your sheet
+    TokenType.TOK_SPACE:    _imm_delim25,
+    TokenType.TOK_TAB:      _imm_delim25,
+    TokenType.TOK_NEWLINE:  _imm_delim25,
 }
 
-def _delimiter_ok(ttype, next_char):
+def _delimiter_ok(lex, ttype, next_char):
     pred = _TOKEN_DELIM.get(ttype)
-    return True if pred is None else pred(next_char)
+    return True if pred is None else pred(lex, next_char)
 
 # --------------------------------------------------------------------
 # Lexer with diagram-state tracing and delimiter validation
@@ -140,8 +210,8 @@ class Lexer:
         return tok
 
     def _emit_with_delim_check(self, ttype, lexeme, start_col, value=None):
-        nxt = self._peek()
-        if not _delimiter_ok(ttype, nxt):
+        nxt = self._peek()  # immediate next char (for error context)
+        if not _delimiter_ok(self, ttype, nxt):
             self._err(f"Invalid delimiter after {ttype.name} (got {repr(nxt)} per TD)", nxt, self.col)
         return self._make_token(ttype, lexeme, start_col, value)
 
@@ -395,6 +465,21 @@ class Lexer:
                         buf.append(self._advance_state(p[4], "KW:solid:d"))
                         return self._emit_kw_or_ident(start_col, buf, TokenType.TOK_SOLID)
         return self._finish_ident(start_col, buf) or self.get_next_token()
+
+    def _kw_from_m(self, start_col, first):
+        # TD path: m-e-n-d
+        buf = [first]
+        if self._peek() == 'e':
+            p = KW_PATHS["mend"]  # must exist in diagram_states.KW_PATHS
+            buf.append(self._advance_state(p[1], "KW:mend:e"))
+            if self._peek() == 'n':
+                buf.append(self._advance_state(p[2], "KW:mend:n"))
+                if self._peek() == 'd':
+                    buf.append(self._advance_state(p[3], "KW:mend:d"))
+                    return self._emit_kw_or_ident(start_col, buf, TokenType.TOK_MEND)
+        # fall back to identifier if any letter mismatches
+        return self._finish_ident(start_col, buf) or self.get_next_token()
+
 
     # ---------------- core DFA ----------------
     def get_next_token(self):
@@ -723,9 +808,17 @@ class Lexer:
                     state = State.BLOCK_COMMENT; continue
 
     def tokenize_all(self):
-        out=[]
+        """Return a full list of tokens until TOK_EOF."""
+        out = []
         while True:
-            t=self.get_next_token()
+            t = self.get_next_token()
             out.append(t)
-            if t.type == TokenType.TOK_EOF: break
+            # TokenType may be Enum; compare by value or name
+            if t.type == TokenType.TOK_EOF or getattr(t.type, "name", None) == "TOK_EOF":
+                break
         return out
+
+    def __iter__(self):
+        """Allow: for t in Lexer(src): ..."""
+        for t in self.tokenize_all():
+            yield t
