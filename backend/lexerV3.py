@@ -6,6 +6,40 @@ import sys
 # 1. TOKEN DEFINITIONS (Unchanged)
 # ==============================================================================
 class TokenType(Enum):
+    # KEYWORDS
+    TOK_TILE = auto()
+    TOK_GLASS = auto()
+    TOK_BRICK = auto()
+    TOK_FIELD = auto()
+    TOK_WALL = auto()
+    TOK_BEAM = auto()
+    TOK_IF = auto()
+    TOK_ELSE = auto()
+    TOK_ROOM = auto()
+    TOK_DOOR = auto()
+    TOK_GROUND = auto()
+    TOK_FOR = auto()
+    TOK_WHILE = auto()
+    TOK_DO = auto()
+    TOK_CRACK = auto()
+    TOK_MEND = auto()
+    TOK_BLUEPRINT = auto()
+    TOK_HOUSE = auto()
+    TOK_VIEW = auto()
+    TOK_WRITE = auto()
+    TOK_HOME = auto()
+    TOK_SOLID = auto()
+    TOK_FRAGILE = auto()
+    TOK_CEMENT = auto()
+    TOK_ROOF = auto()
+
+    # ID & LITERALS
+    IDENTIFIER = auto()
+    NUMBER = auto()
+    TOK_BRICK_LITERAL = auto()
+    TOK_WALL_LITERAL = auto()
+
+    # OPERATORS
     TOK_PLUS = auto()
     TOK_MINUS = auto()
     TOK_MULTIPLY = auto()
@@ -23,39 +57,13 @@ class TokenType(Enum):
     TOK_LESS_THAN = auto()
     TOK_EQUALS = auto()
     TOK_NOT_EQUAL = auto()
-    TOK_LT_EQUAL = auto()
     TOK_GT_EQUAL = auto()
+    TOK_LT_EQUAL = auto()
     TOK_AND = auto()
     TOK_OR = auto()
     TOK_NOT = auto()
-    TOK_TILE = auto()
-    TOK_GLASS = auto()
-    TOK_BRICK = auto()
-    TOK_BEAM = auto()
-    TOK_SPACE = auto()
-    TOK_WALL = auto()
-    TOK_HOUSE = auto()
-    IDENTIFIER = auto()
-    NUMBER = auto()
-    TOK_BRICK_LITERAL = auto()
-    TOK_WALL_LITERAL = auto()
-    TOK_IF = auto()
-    TOK_ELSE = auto()
-    TOK_ROOM = auto()
-    TOK_DOOR = auto()
-    TOK_GROUND = auto()
-    TOK_FOR = auto()
-    TOK_WHILE = auto()
-    TOK_DO = auto()
-    TOK_CRACK = auto()
-    TOK_BLUEPRINT = auto()
-    TOK_VIEW = auto()
-    TOK_WRITE = auto()
-    TOK_HOME = auto()
-    TOK_SOLID = auto()
-    TOK_FRAGILE = auto()
-    TOK_CEMENT = auto()
-    TOK_ROOF = auto()
+
+    # DELIMITERS
     TOK_SEMICOLON = auto()
     TOK_COLON = auto()
     TOK_COMMA = auto()
@@ -67,6 +75,8 @@ class TokenType(Enum):
     TOK_CL_BRACKET = auto()
     TOK_OP_PARENTHESES = auto()
     TOK_CL_PARENTHESES = auto()
+
+    # SPECIAL
     TOK_EOF = auto()
 
 # ==============================================================================
@@ -74,13 +84,14 @@ class TokenType(Enum):
 # ==============================================================================
 KEYWORDS = {
     "tile": TokenType.TOK_TILE, "glass": TokenType.TOK_GLASS, "brick": TokenType.TOK_BRICK,
-    "beam": TokenType.TOK_BEAM, "space": TokenType.TOK_SPACE, "wall": TokenType.TOK_WALL,
-    "house": TokenType.TOK_HOUSE, "if": TokenType.TOK_IF, "else": TokenType.TOK_ELSE,
-    "room": TokenType.TOK_ROOM, "door": TokenType.TOK_DOOR, "ground": TokenType.TOK_GROUND,
-    "for": TokenType.TOK_FOR, "while": TokenType.TOK_WHILE, "do": TokenType.TOK_DO,
-    "crack": TokenType.TOK_CRACK, "blueprint": TokenType.TOK_BLUEPRINT, "view": TokenType.TOK_VIEW,
-    "write": TokenType.TOK_WRITE, "home": TokenType.TOK_HOME, "solid": TokenType.TOK_SOLID,
-    "fragile": TokenType.TOK_FRAGILE, "cement": TokenType.TOK_CEMENT, "roof": TokenType.TOK_ROOF,
+    "field": TokenType.TOK_FIELD, "wall": TokenType.TOK_WALL, "beam": TokenType.TOK_BEAM,  
+    "if": TokenType.TOK_IF, "else": TokenType.TOK_ELSE, "room": TokenType.TOK_ROOM,
+    "door": TokenType.TOK_DOOR, "ground": TokenType.TOK_GROUND, "for": TokenType.TOK_FOR,
+    "while": TokenType.TOK_WHILE, "do": TokenType.TOK_DO, "crack": TokenType.TOK_CRACK,
+    "mend": TokenType.TOK_MEND, "blueprint": TokenType.TOK_BLUEPRINT, "house": TokenType.TOK_HOUSE,
+    "view": TokenType.TOK_VIEW, "write": TokenType.TOK_WRITE, "home": TokenType.TOK_HOME, 
+    "solid": TokenType.TOK_SOLID, "fragile": TokenType.TOK_FRAGILE, "cement": TokenType.TOK_CEMENT, 
+    "roof": TokenType.TOK_ROOF,
 }
 
 # ==============================================================================

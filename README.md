@@ -1,6 +1,6 @@
 # Compiler-Design
 
-How to run in Linux/Unix"
+How to run in Linux/Unix:
 
 in front end do npm run dev
 
