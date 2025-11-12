@@ -3,10 +3,10 @@ from dataclasses import dataclass
 import sys
 
 # ==============================================================================
-# 1. TOKEN DEFINITIONS (Unchanged)
+# 1. TOKEN DEFINITIONS (ENHANCED) check ID & Lit
 # ==============================================================================
 class TokenType(Enum):
-    # KEYWORDS
+    # KEYWORDS (unchanged)
     TOK_TILE = auto()
     TOK_GLASS = auto()
     TOK_BRICK = auto()
@@ -33,13 +33,14 @@ class TokenType(Enum):
     TOK_CEMENT = auto()
     TOK_ROOF = auto()
 
-    # ID & LITERALS
+    # ID & LITERALS (ENHANCED - separate tile and glass)
     IDENTIFIER = auto()
-    NUMBER = auto()
+    TOK_TILE_LITERAL = auto() # New
+    TOK_GLASS_LITERAL = auto() # New
     TOK_BRICK_LITERAL = auto()
     TOK_WALL_LITERAL = auto()
 
-    # OPERATORS
+    # OPERATORS (unchanged)
     TOK_PLUS = auto()
     TOK_MINUS = auto()
     TOK_MULTIPLY = auto()
@@ -63,7 +64,7 @@ class TokenType(Enum):
     TOK_OR = auto()
     TOK_NOT = auto()
 
-    # DELIMITERS
+    # DELIMITERS (unchanged)
     TOK_SEMICOLON = auto()
     TOK_COLON = auto()
     TOK_COMMA = auto()
@@ -76,7 +77,7 @@ class TokenType(Enum):
     TOK_OP_PARENTHESES = auto()
     TOK_CL_PARENTHESES = auto()
 
-    # SPECIAL
+    # SPECIAL (unchanged)
     TOK_EOF = auto()
 
 # ==============================================================================
@@ -122,9 +123,15 @@ class Lexer:
         self.src: str = src
         self.pos: int = 0
         self.line: int = 1
-        self.column: int = 1  # <-- NEW: Track column
+        self.column: int = 1
         self.errors: list[dict] = []
-        
+
+        # NEW: Escape sequence mapping based on our docs
+        self.escape_sequences = {
+            'n': '\n', 't': '\t', '\\': '\\', 
+            "'": "'", '"': '"', '0': '\0'
+        }
+
     def _is_at_end(self) -> bool:
         return self.pos >= len(self.src)
         
@@ -199,23 +206,171 @@ class Lexer:
             else:
                 return
 
-    # --- (Helper functions for literals are unchanged, but errors now get columns) ---
+    def _handle_identifier(self, start: int, start_col: int) -> Token:
+        """Enhanced identifier with 20-character limit"""
+        char_count = 1  # First character already consumed
+        
+        while (not self._is_at_end() and self._peek() and 
+               (self._peek().isalnum() or self._peek() == '_') and
+               char_count < 20):  # ENFORCE 20-CHAR LIMIT
+            self._advance()
+            char_count += 1
+        
+        # Check if there are more characters beyond limit
+        if (not self._is_at_end() and self._peek() and 
+            (self._peek().isalnum() or self._peek() == '_')):
+            self._report_error("Identifier exceeds 20 character limit", col=start_col)
+            # Consume the rest of the identifier
+            while not self._is_at_end() and self._peek() and (self._peek().isalnum() or self._peek() == '_'):
+                self._advance()
+        
+        lexeme = self.src[start:self.pos]
+        token_type = KEYWORDS.get(lexeme, TokenType.IDENTIFIER)
+        return self._make_token(token_type, lexeme, col=start_col)
+
+    def _handle_tile_literal(self, start: int, start_col: int, has_sign: bool = False) -> Token:
+        """Handle tile literals with 15-digit limit"""
+        digit_count = 0
+        max_digits = 15
+        
+        while not self._is_at_end() and self._peek() and self._peek().isdigit() and digit_count < max_digits:
+            self._advance()
+            digit_count += 1
+        
+        # Check for excess digits
+        if not self._is_at_end() and self._peek() and self._peek().isdigit():
+            self._report_error("Tile literal exceeds 15-digit limit", col=start_col)
+            # Consume excess digits
+            while not self._is_at_end() and self._peek() and self._peek().isdigit():
+                self._advance()
+        
+        lexeme = self.src[start:self.pos]
+        
+        # Validate range
+        try:
+            value = int(lexeme)
+            # Check range (-999,999,999,999,999 to 999,999,999,999,999)
+            if value > 999999999999999:
+                value = 999999999999999
+                self._report_error("Tile literal exceeds maximum value, adjusted to 999999999999999", col=start_col)
+            elif value < -999999999999999:
+                value = -999999999999999  
+                self._report_error("Tile literal exceeds minimum value, adjusted to -999999999999999", col=start_col)
+        except ValueError:
+            value = 0
+            self._report_error("Invalid tile literal", col=start_col)
+        
+        return self._make_token(TokenType.TOK_TILE_LITERAL, lexeme, value, start_col)
+
+    def _handle_glass_literal(self, start: int, start_col: int, has_sign: bool = False) -> Token:
+        """Handle glass literals with 15+7 digit limits"""
+        # Integer part (max 15 digits)
+        int_digits = 0
+        while not self._is_at_end() and self._peek() and self._peek().isdigit() and int_digits < 15:
+            self._advance()
+            int_digits += 1
+        
+        # Consume decimal point (already verified)
+        self._advance()
+        
+        # Decimal part (max 7 digits)
+        dec_digits = 0
+        while not self._is_at_end() and self._peek() and self._peek().isdigit() and dec_digits < 7:
+            self._advance()
+            dec_digits += 1
+        
+        # Check for excess digits in decimal part
+        if not self._is_at_end() and self._peek() and self._peek().isdigit():
+            self._report_error("Glass literal decimal part exceeds 7-digit limit", col=start_col)
+            while not self._is_at_end() and self._peek() and self._peek().isdigit():
+                self._advance()
+        
+        lexeme = self.src[start:self.pos]
+        
+        # Validate range
+        try:
+            value = float(lexeme)
+            max_val = 999999999999999.9999999
+            min_val = -999999999999999.9999999
+            if value > max_val:
+                value = max_val
+                self._report_error("Glass literal exceeds maximum value", col=start_col)
+            elif value < min_val:
+                value = min_val
+                self._report_error("Glass literal exceeds minimum value", col=start_col)
+        except ValueError:
+            value = 0.0
+            self._report_error("Invalid glass literal", col=start_col)
+        
+        return self._make_token(TokenType.TOK_GLASS_LITERAL, lexeme, value, start_col)
+
+    def _handle_char_literal(self) -> Token | None:
+        """Enhanced with complete escape sequence support"""
+        start_pos = self.pos - 1
+        start_col = self.column - 1
+        
+        if self._is_at_end():
+            self._report_error("Unterminated character literal", col=start_col)
+            return None
+
+        char = self._advance()
+        
+        # Handle escape sequences
+        if char == '\\':
+            if self._is_at_end():
+                self._report_error("Unterminated character literal", col=start_col)
+                return None
+            escape_char = self._advance()
+            if escape_char in self.escape_sequences:
+                char_val = ord(self.escape_sequences[escape_char])
+            else:
+                self._report_error(f"Unknown escape sequence '\\{escape_char}'", col=self.column-2)
+                char_val = ord(escape_char)  # Use the character as-is
+        elif char == '\'':
+            self._report_error("Empty character literal", col=start_col)
+            return None
+        else:
+            char_val = ord(char)
+
+        # Check for multi-character literal
+        if not self._is_at_end() and self._peek() != '\'':
+            # Check if there's more than one character
+            temp_pos = self.pos
+            while temp_pos < len(self.src) and self.src[temp_pos] != '\'':
+                temp_pos += 1
+            if temp_pos - self.pos > 0:
+                self._report_error("Multi-character literal", col=start_col)
+            
+            # Skip to closing quote
+            while not self._is_at_end() and self._peek() != '\'':
+                self._advance()
+
+        if self._is_at_end() or self._peek() != '\'':
+            self._report_error("Unterminated character literal", col=start_col)
+            return None
+        
+        self._advance()  # Consume closing quote
+        lexeme = self.src[start_pos:self.pos]
+        return self._make_token(TokenType.TOK_BRICK_LITERAL, lexeme, char_val, start_col)
+
     def _handle_string_literal(self) -> Token | None:
+        """Enhanced with complete escape sequence support"""
         start_pos = self.pos - 1
         start_col = self.column - 1
         value = ""
+        
         while not self._is_at_end() and self._peek() != '"':
             char = self._advance()
             
             if char == '\\':
-                if self._is_at_end(): break
-                escape = self._advance()
-                if escape == 'n': value += '\n'
-                elif escape == 't': value += '\t'
-                elif escape == '\\': value += '\\'
-                elif escape == '"': value += '"'
+                if self._is_at_end():
+                    break
+                escape_char = self._advance()
+                if escape_char in self.escape_sequences:
+                    value += self.escape_sequences[escape_char]
                 else:
-                    self._report_error(f"Unknown escape sequence '\\{escape}'", col=self.column-1)
+                    self._report_error(f"Unknown escape sequence '\\{escape_char}'", col=self.column-2)
+                    value += escape_char  # Use the character as-is
             elif char == '\n':
                 self._report_error("Unterminated string literal (newline found)", col=start_col)
                 return None
@@ -226,63 +381,9 @@ class Lexer:
             self._report_error("Unterminated string literal", col=start_col)
             return None
 
-        self._advance() # Consume the closing "
+        self._advance()  # Consume closing quote
         lexeme = self.src[start_pos:self.pos]
         return self._make_token(TokenType.TOK_WALL_LITERAL, lexeme, value, start_col)
-
-    def _handle_char_literal(self) -> Token | None:
-        start_pos = self.pos - 1
-        start_col = self.column - 1
-        char_val = 0
-        
-        if self._is_at_end():
-            self._report_error("Unterminated character literal", col=start_col)
-            return None
-
-        char = self._advance()
-        
-        if char == '\\':
-            if self._is_at_end():
-                self._report_error("Unterminated character literal", col=start_col)
-                return None
-            escape = self._advance()
-            if escape == 'n': char_val = ord('\n')
-            elif escape == 't': char_val = ord('\t')
-            elif escape == '\\': char_val = ord('\\')
-            elif escape == '\'': char_val = ord('\'')
-            else:
-                self._report_error(f"Unknown escape sequence '\\{escape}'", col=self.column-1)
-                char_val = ord(escape)
-        elif char == '\'':
-             self._report_error("Empty character literal", col=start_col)
-             return None
-        else:
-            char_val = ord(char)
-
-        if self._is_at_end() or self._peek() != '\'':
-            self._report_error("Unterminated or multi-character literal", col=start_col)
-            while not self._is_at_end() and self._peek() != '\'':
-                self._advance()
-            if self._is_at_end(): return None
-        
-        self._advance() # Consume the closing '
-        lexeme = self.src[start_pos:self.pos]
-        return self._make_token(TokenType.TOK_BRICK_LITERAL, lexeme, char_val, start_col)
-
-    def _handle_number_literal(self, start: int, start_col: int) -> Token:
-        while not self._is_at_end() and self._peek() and self._peek().isdigit():
-            self._advance()
-        
-        if (not self._is_at_end() and self._peek() == '.' and
-            self._peek_next() and self._peek_next().isdigit()):
-            self._advance() # Consume '.'
-            while not self._is_at_end() and self._peek() and self._peek().isdigit():
-                self._advance()
-            lexeme = self.src[start:self.pos]
-            return self._make_token(TokenType.NUMBER, lexeme, float(lexeme), start_col)
-        else:
-            lexeme = self.src[start:self.pos]
-            return self._make_token(TokenType.NUMBER, lexeme, int(lexeme), start_col)
 
     def get_next_token(self) -> Token | None:
         self._skip_whitespace_and_comments()
@@ -291,18 +392,31 @@ class Lexer:
             return self._make_token(TokenType.TOK_EOF, "EOF")
 
         start = self.pos
-        start_col = self.column # <-- NEW: Mark column at token start
+        start_col = self.column
         char = self._advance()
 
+        # Enhanced identifier handling
         if char.isalpha() or char == '_':
-            while not self._is_at_end() and self._peek() and (self._peek().isalnum() or self._peek() == '_'):
-                self._advance()
-            lexeme = self.src[start:self.pos]
-            token_type = KEYWORDS.get(lexeme, TokenType.IDENTIFIER)
-            return self._make_token(token_type, lexeme, col=start_col)
+            return self._handle_identifier(start, start_col)
 
-        if char.isdigit():
-            return self._handle_number_literal(start, start_col)
+        # Enhanced number handling - distinguish between tile and glass
+        if char.isdigit() or (char == '-' and not self._is_at_end() and self._peek().isdigit()):
+            # Determine if it's tile or glass by looking ahead
+            has_decimal = False
+            temp_pos = self.pos - 1  # Start from current position (including '-')
+            
+            # Quick scan to check for decimal point
+            while temp_pos < len(self.src) and (self.src[temp_pos].isdigit() or 
+                                              self.src[temp_pos] in '-.'):
+                if self.src[temp_pos] == '.':
+                    has_decimal = True
+                    break
+                temp_pos += 1
+            
+            if has_decimal:
+                return self._handle_glass_literal(start, start_col, char == '-')
+            else:
+                return self._handle_tile_literal(start, start_col, char == '-')
 
         if char == "'":
             return self._handle_char_literal()
@@ -406,7 +520,7 @@ class Lexer:
                 break
         return tokens
 
-# =CM_e_s_t_d_r_i_v_e_r_>
+# ==============================================================================
 # 5. TEST DRIVER (Unchanged)
 # ==============================================================================
 if __name__ == "__main__":
