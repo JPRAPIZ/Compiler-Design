@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from lexerV3 import Lexer # Import your *upgraded* Lexer class
+from lexerV5 import Lexer # Import your *upgraded* Lexer class
 
 app = Flask(__name__)
 CORS(app)
