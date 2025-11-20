@@ -17,11 +17,12 @@ def run_lexer():
                 "errors": [{"message": "No 'code' field provided."}]
             }), 400
         
-        source_code = data['code'].replace('\r\n', '\n').strip()
+        source_code = data['code']
         
-        if not source_code:
+        # Handle empty or whitespace-only code first
+        if not source_code or not source_code.strip():
             return jsonify({
-                "status": "success",
+                "status": "success", 
                 "tokens": [],
                 "errors": [],
                 "time_ms": 0
@@ -42,8 +43,8 @@ def run_lexer():
                 "errors": [{"message": "Code too large (max 100KB)."}]
             }), 400
 
-        # Normalize line endings and clean input
-        source_code = source_code.replace('\r\n', '\n').strip()
+        # Normalize line endings but DON'T strip - preserve original formatting
+        source_code = source_code.replace('\r\n', '\n')
         
         # Initialize lexer and process
         lexer = Lexer(source_code)
