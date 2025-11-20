@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from lexerV3 import Lexer
+from lexerV3 import Lexer, TokenType
 import time
 
 app = Flask(__name__)
@@ -10,8 +10,6 @@ CORS(app, resources={r"/lex": {"origins": "*"}})
 def run_lexer():
     try:
         data = request.json or {}
-        
-        # Input validation
         if 'code' not in data:
             return jsonify({
                 "status": "error",
@@ -19,9 +17,16 @@ def run_lexer():
                 "errors": [{"message": "No 'code' field provided."}]
             }), 400
         
-        source_code = data['code']
+        source_code = data['code'].replace('\r\n', '\n').strip()
         
-        # Type validation
+        if not source_code:
+            return jsonify({
+                "status": "success",
+                "tokens": [],
+                "errors": [],
+                "time_ms": 0
+            }), 200
+
         if not isinstance(source_code, str):
             return jsonify({
                 "status": "error", 
@@ -36,15 +41,6 @@ def run_lexer():
                 "tokens": [],
                 "errors": [{"message": "Code too large (max 100KB)."}]
             }), 400
-            
-        # Empty code validation
-        if not source_code.strip():
-            return jsonify({
-                "status": "success",
-                "tokens": [],
-                "errors": [],
-                "time_ms": 0
-            }), 200
 
         # Normalize line endings and clean input
         source_code = source_code.replace('\r\n', '\n').strip()
@@ -57,13 +53,21 @@ def run_lexer():
         elapsed = round((time.time() - start_time) * 1000, 2)
 
         # Serialize tokens
-        serializable_tokens = [{
-            "type": t.type.name,
-            "lexeme": t.lexeme,
-            "value": t.value,
-            "line": t.line,
-            "col": t.col
-        } for t in valid_tokens]
+        serializable_tokens = []
+        for t in valid_tokens:
+            # Get the token type name safely
+            if hasattr(t.type, 'name'):
+                type_name = t.type.name  # For TokenType enum
+            else:
+                type_name = str(t.type)  # For "id1", "id2" strings
+            
+            serializable_tokens.append({
+                "type": type_name,
+                "lexeme": t.lexeme,
+                "value": t.value,
+                "line": t.line,
+                "col": t.col
+            })
 
         return jsonify({
             "status": "success",
