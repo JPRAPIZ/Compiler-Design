@@ -1,77 +1,132 @@
 import React, { useState } from 'react';
-
-// --- NEW: Imports for the code editor ---
 import AceEditor from "react-ace";
 
-// Import themes and modes for the editor
-import "ace-builds/src-noconflict/mode-text"; // Basic text mode
-import "ace-builds/src-noconflict/theme-tomorrow_night"; // The dark theme
-import "ace-builds/src-noconflict/theme-textmate"; // A good light theme
+// Ace themes + modes
+import "ace-builds/src-noconflict/mode-text";
+import "ace-builds/src-noconflict/theme-tomorrow_night";
 import "ace-builds/src-noconflict/ext-language_tools";
+
+import archLogo from "./assets/arCh.png";
 
 function App() {
   // === State ===
-  const [code, setCode] = useState("tile x = -5;\nbrick c = 'a';\nwall s = \"err@or\";\n\n/* This is a comment */\nglass y = 10.5;");
+  const [code, setCode] = useState(
+`tile blueprint() {
+
+wall welcome = "Hello World!";
+
+home 0;
+
+}`
+  );
   const [tokens, setTokens] = useState([]);
   const [errors, setErrors] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [annotations, setAnnotations] = useState([]);
+  const [markers, setMarkers] = useState([]);
+  const [editor, setEditor] = useState(null);
+
+
   
-  // --- NEW: State for theme toggle (defaulted to light mode) ---
-  const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // === Handlers ===
-  const handleSubmit = async () => {
-    setIsLoading(true);
-    setTokens([]);
-    setErrors([]);
 
-    try {
-      const response = await fetch('http://localhost:5000/lex', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code }),
-      });
+const handleSubmit = async () => {
+  setIsLoading(true);
+  setTokens([]);
+  setErrors([]);
+  setAnnotations([]);
+  setMarkers([]);
 
-      const data = await response.json();
+  try {
+    const response = await fetch('http://localhost:8000/lex', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: code }),
+    });
 
-      if (response.ok) {
-        setTokens(data.tokens || []);
-        setErrors(data.errors || []);
-      } else {
-        setErrors(data.errors || [{ message: "Unknown server error" }]);
-      }
+    const data = await response.json();
 
-    } catch (error) {
-      console.error("Fetch error:", error);
-      setErrors([{ message: "Cannot connect to compiler backend. Is it running?", line: 1, col: 1 }]);
-    }
-    
-    setIsLoading(false);
-  };
+    const newTokens = Array.isArray(data.tokens) ? data.tokens : [];
+    const newErrors = Array.isArray(data.errors) ? data.errors : [];
 
-  // --- NEW: Handler for the theme button ---
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-  };
+    setTokens(newTokens);
+    setErrors(newErrors);
 
-  // === Render ===
+    // Annotations (gutter X + tooltip)
+    const anns = newErrors.map(err => ({
+      row: (err.line ?? err.start_line ?? 1) - 1,
+      column: (err.col ?? err.start_col ?? 1) - 1,
+      text: err.message,
+      type: "error",
+    }));
+    setAnnotations(anns);
+
+
+    // Markers (red highlight in code)
+    // Ace markers (highlight from start_* to end_*)
+    const markers = newErrors.map(err => {
+      const startRow = (err.start_line ?? err.line ?? 1) - 1;
+      const startCol = (err.start_col  ?? err.col  ?? 1) - 1;
+      const endRow   = (err.end_line   ?? err.line ?? 1) - 1;
+      const endCol   = (err.end_col    ?? err.col  ?? (startCol + 1)) - 1;
+
+      return {
+        startRow,
+        startCol,
+        endRow,
+        endCol,
+        className: "lexer-error-marker",
+        type: "text",
+      };
+    });
+
+    setMarkers(markers);
+
+
+
+
+
+
+  } catch (error) {
+    setErrors([{
+      message: "Cannot connect to compiler backend. Is it running?",
+      line: 1,
+      col: 1,
+    }]);
+  }
+
+  setIsLoading(false);
+};
+
+
+    const handleErrorClick = (err) => {
+      if (!editor) return;
+
+      const row = (err.start_line ?? err.line ?? 1) - 1;
+      const col = (err.start_col  ?? err.col  ?? 1) - 1;
+
+      // Move cursor & scroll there
+      editor.focus();
+      editor.gotoLine(row + 1, col, true);      // line is 1-based, col is 0-based
+      editor.selection.moveTo(row, col);        // put caret at exact position
+    };
+
+
   return (
-    // --- DYNAMIC THEME: Root element ---
-    <div className={`min-h-screen font-sans ${isDarkMode ? "bg-[#111] text-gray-300" : "bg-white text-black"}`}>
-      
-      {/* --- MODIFIED: Header with all buttons --- */}
-      <header className={`flex flex-col md:flex-row items-center justify-between p-4 border-b ${isDarkMode ? "border-[#333] bg-[#1a1a1a]" : "border-gray-200 bg-gray-50"}`}>
-        <h1 className={`text-2xl font-bold ${isDarkMode ? "text-white" : "text-black"}`}>arCh Compiler 🏛️</h1>
-        
-        <div className="flex flex-wrap justify-center space-x-2 mt-2 md:mt-0">
-          {/* --- NEW: Theme Toggle Button --- */}
-          <button
-            onClick={toggleTheme}
-            className={`px-4 py-2 rounded-md font-semibold ${isDarkMode ? "bg-gray-700 text-white hover:bg-gray-600" : "bg-gray-200 text-black hover:bg-gray-300"}`}
-          >
-            {isDarkMode ? "Light Mode ☀️" : "Dark Mode 🌙"}
-          </button>
+    <div className="min-h-screen font-sans bg-[#111] text-gray-300">
 
+      {/* Header */}
+      <header className="flex flex-col md:flex-row items-center justify-between p-4 border-b border-[#333] bg-[#1a1a1a]">
+        <div className="flex items-center space-x-3">
+          <img
+            src={archLogo}
+            alt="arCh Compiler"
+            className="h-10 md:h-16 object-contain"
+            //size
+          />
+        </div>
+
+        <div className="flex flex-wrap justify-center space-x-2 mt-2 md:mt-0">
           <button
             onClick={handleSubmit}
             disabled={isLoading}
@@ -80,117 +135,110 @@ function App() {
             {isLoading ? "Running..." : "Run Lexer"}
           </button>
 
-          {/* --- NEW: Placeholder Buttons --- */}
-          <button
-            disabled={true}
-            className="px-4 py-2 bg-gray-600 text-gray-400 rounded-md font-semibold cursor-not-allowed"
-            title="Coming soon!"
-          >
+          <button disabled className="px-4 py-2 bg-gray-700 text-gray-400 rounded-md font-semibold cursor-not-allowed">
             Run Syntax
           </button>
-          <button
-            disabled={true}
-            className="px-4 py-2 bg-gray-600 text-gray-400 rounded-md font-semibold cursor-not-allowed"
-            title="Coming soon!"
-          >
+          <button disabled className="px-4 py-2 bg-gray-700 text-gray-400 rounded-md font-semibold cursor-not-allowed">
             Run Semantic
           </button>
         </div>
       </header>
 
-      {/* --- MODIFIED: Adjusted height for new header size --- */}
-      <div className="flex flex-col md:flex-row" style={{ height: 'calc(100vh - 125px)' }}> {/* Adjusted for multi-line header on mobile */}
+      {/* Main panels */}
+      <div className="flex flex-col md:flex-row" style={{ height: 'calc(100vh - 125px)' }}>
         
-        {/* --- MODIFIED: Editor Panel (60% width) --- */}
-        <div className={`flex flex-col w-full md:w-3/5 ${isDarkMode ? "border-r border-[#333]" : "border-r border-gray-200"}`}>
-          <h2 className={`text-lg font-semibold p-2 border-b ${isDarkMode ? "bg-[#222] border-[#333]" : "bg-gray-100 border-gray-200"}`}>
+        {/* Editor Panel */}
+        <div className="flex flex-col w-full md:w-3/5 border-r border-[#333]">
+          <h2 className="text-lg font-semibold p-2 border-b bg-[#222] border-[#333]">
             Source Code
           </h2>
-          
-          {/* --- NEW: Replaced <textarea> with <AceEditor> --- */}
+
           <AceEditor
             mode="text"
-            theme={isDarkMode ? "tomorrow_night" : "textmate"} // Dynamic theme
+            theme="tomorrow_night"
             onChange={setCode}
             value={code}
             name="SOURCE_CODE_EDITOR"
             editorProps={{ $blockScrolling: true }}
+            onLoad={(ed) => setEditor(ed)}
             setOptions={{
               useWorker: false,
-              showLineNumbers: true, // <-- YOUR LINE NUMBERS!
-              tabSize: 2,
+              showLineNumbers: true,
+              tabSize: 5,
+              useSoftTabs: false,
+              
             }}
             width="100%"
             height="100%"
-            style={{ backgroundColor: isDarkMode ? '#0a0a0a' : '#ffffff' }} // Dynamic BG
-            fontSize={18} // <-- BIGGER FONT SIZE!
+            style={{ backgroundColor: '#0a0a0a' }}
+            fontSize={18}
+            annotations={annotations}
+            markers={markers} 
           />
         </div>
 
-        {/* --- MODIFIED: Output Panels (40% width) --- */}
+        {/* Output Panels */}
         <div className="flex flex-col w-full md:w-2/5">
           
-          {/* --- Error Panel (Dynamic Theme) --- */}
+          {/* Errors */}
           <div className="flex flex-col" style={{ height: '30%' }}>
-            <h2 className={`text-lg font-semibold p-2 border-b ${isDarkMode ? "bg-[#222] border-[#333]" : "bg-gray-100 border-gray-200"}`}>
+            <h2 className="text-lg font-semibold p-2 border-b bg-[#222] border-[#333]">
               Errors
             </h2>
-            <div className={`flex-1 overflow-auto p-2 ${isDarkMode ? "bg-[#0a0a0a]" : "bg-white"}`}>
+            <div className="flex-1 overflow-auto p-2 bg-[#0a0a0a] text-red-400">
               {errors.length > 0 ? (
-                <pre className={`text-sm whitespace-pre-wrap ${isDarkMode ? "text-red-400" : "text-red-600"}`}>
+                <div className="text-sm space-y-1">
                   {errors.map((err, i) => (
-                    `Line ${err.line}:${err.col} - ${err.message}\n`
+                    <div
+                      key={i}
+                      className="cursor-pointer hover:bg-red-900/30 rounded px-1 py-0.5"
+                      onClick={() => handleErrorClick(err)}
+                    >
+                      Line {err.line}:{err.col} - {err.message}
+                    </div>
                   ))}
-                </pre>
+                </div>
               ) : (
-                <span className="text-gray-500">No errors.</span>
+                <span className="text-gray-500">No Lexical errors.</span>
               )}
             </div>
+
           </div>
 
-          {/* --- Token Panel (Dynamic Theme) --- */}
-          <div className={`flex flex-col border-t ${isDarkMode ? "border-[#333]" : "border-gray-200"}`} style={{ height: '70%' }}>
-            <h2 className={`text-lg font-semibold p-2 border-b ${isDarkMode ? "bg-[#222] border-[#333]" : "bg-gray-100 border-gray-200"}`}>
-              Token Stream
-            </h2>
+          {/* Tokens */}
+          <div className="flex flex-col border-t border-[#333]" style={{ height: '70%' }}>
             <div className="flex-1 overflow-auto">
-              <table className={`w-full text-sm ${isDarkMode ? "text-gray-300" : "text-black"}`}>
-                <thead className={`sticky top-0 ${isDarkMode ? "bg-[#222]" : "bg-gray-100"}`}>
+              <table className="w-full text-sm text-gray-300">
+                <thead className="sticky top-0 bg-[#222]">
                   <tr>
-                    <th className="px-2 py-1 text-left font-semibold">Type</th>
+                    <th className="px-2 py-1 text-left font-semibold">Token</th>
                     <th className="px-2 py-1 text-left font-semibold">Lexeme</th>
-                    <th className="px-2 py-1 text-left font-semibold">Value</th>
                     <th className="px-2 py-1 text-left font-semibold">Line</th>
                     <th className="px-2 py-1 text-left font-semibold">Col</th>
                   </tr>
                 </thead>
-                <tbody className={isDarkMode ? "bg-[#0a0a0a]" : "bg-white"}>
-                  {tokens.map((token, idx) => (
-                    <tr
-                      key={idx}
-                      className={`border-t ${isDarkMode ? "border-[#333] hover:bg-[#1a1a1a]" : "border-gray-200 hover:bg-gray-50"}`}
-                    >
+                <tbody className="bg-[#0a0a0a]">
+                  {tokens.map((t, idx) => (
+                    <tr key={idx} className="border-t border-[#333] hover:bg-[#1a1a1a]">
                       <td className="px-2 py-1">
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs ${isDarkMode ? "bg-[#333] text-gray-400" : "bg-gray-200 text-gray-800"}`}>
-                          {token.type}
+                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-[#333] text-gray-300">
+                          {t.tokenType}
                         </span>
                       </td>
-                      <td className={`px-2 py-1 font-mono ${isDarkMode ? "text-gray-100" : "text-black"}`}>
-                        {JSON.stringify(token.lexeme)}
+                      <td className="px-2 py-1 font-mono text-gray-100">
+                        {t.lexeme}
                       </td>
-                      <td className={`px-2 py-1 font-mono ${isDarkMode ? "text-gray-100" : "text-black"}`}>
-                        {JSON.stringify(token.value)}
-                      </td>
-      
-                      <td className="px-2 py-1">{token.line}</td>
-                      <td className="px-2 py-1">{token.col}</td>
+                      <td className="px-2 py-1">{t.line}</td>
+                      <td className="px-2 py-1">{t.column}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
+
         </div>
+
       </div>
     </div>
   );
