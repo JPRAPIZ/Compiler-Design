@@ -152,7 +152,9 @@ class Lexer:
                 self.consumeErrorChar()
                 self.recoverFromError()
 
-
+        # DITO EOF
+        eof_token = Token("$", "EOF", self.line, self.column)
+        self.tokenList.append(eof_token)
 
 
 
