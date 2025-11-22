@@ -198,13 +198,7 @@ class Lexer:
 
         tok = Token(tokenType, lexeme, line, col)
         self.tokenList.append(tok)
-
-        # ---- CRITICAL FIX ----
         self.checkDelimiter(tokenType)
-
-
-
-
 
     def scanToken(self):
         ch = self.advanceChar()

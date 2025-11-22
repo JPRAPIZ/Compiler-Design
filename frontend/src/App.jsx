@@ -27,6 +27,14 @@ home 0;
   const [editor, setEditor] = useState(null);
 
 
+  const errorPositions = new Set(
+    errors.map((err) => {
+      const line = err.start_line ?? err.line;
+      const col  = err.start_col  ?? err.col;
+      return `${line}:${col}`;
+    })
+  );
+
   
 
 
@@ -217,19 +225,55 @@ const handleSubmit = async () => {
                   </tr>
                 </thead>
                 <tbody className="bg-[#0a0a0a]">
-                  {tokens.map((t, idx) => (
-                    <tr key={idx} className="border-t border-[#333] hover:bg-[#1a1a1a]">
-                      <td className="px-3 py-1 text-lg font-mono text-gray-100 whitespace-pre-wrap break-words">
-                        {t.lexeme}
-                      </td>
-                      <td className="px-2 py-1 text-lg font-mono text-gray-100 whitespace-nowrap">
-                        {t.tokenType}
-                      </td>
-                      <td className="px-2 py-1 text-lg whitespace-nowrap">{t.line}</td>
-                      <td className="px-2 py-1 text-lg whitespace-nowrap">{t.column}</td>
-                    </tr>
-                  ))}
+                  {tokens.map((t, idx) => {
+                    const posKey = `${t.line}:${t.column}`;
+                    const isErrorToken = errorPositions.has(posKey);
+
+                    return (
+                      <tr
+                        key={idx}
+                        className={
+                          "border-t border-[#333] hover:bg-[#1a1a1a]" +
+                          (isErrorToken ? " bg-red-900/40" : "")
+                        }
+                      >
+                        <td
+                          className={
+                            "px-3 py-1 text-lg font-mono whitespace-pre-wrap break-words " +
+                            (isErrorToken ? "text-red-300" : "text-gray-100")
+                          }
+                        >
+                          {t.lexeme}
+                        </td>
+                        <td
+                          className={
+                            "px-2 py-1 text-lg font-mono whitespace-nowrap " +
+                            (isErrorToken ? "text-red-300" : "text-gray-100")
+                          }
+                        >
+                          {t.tokenType}
+                        </td>
+                        <td
+                          className={
+                            "px-2 py-1 text-lg whitespace-nowrap " +
+                            (isErrorToken ? "text-red-300" : "")
+                          }
+                        >
+                          {t.line}
+                        </td>
+                        <td
+                          className={
+                            "px-2 py-1 text-lg whitespace-nowrap " +
+                            (isErrorToken ? "text-red-300" : "")
+                          }
+                        >
+                          {t.column}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
+
               </table>
             </div>
           </div>
