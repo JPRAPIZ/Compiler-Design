@@ -2,3 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* red-400-ish underline */
+/* .ace_marker-layer .lexer-error-marker {
+  position: absolute;
+  border-bottom: 2px solid #f87171; 
+  box-sizing: border-box;
+} */
+
+
+/* semi-transparent red */
+.ace_marker-layer .lexer-error-marker {
+  position: absolute;
+  background-color: rgba(248, 113, 113, 0.25); 
+}

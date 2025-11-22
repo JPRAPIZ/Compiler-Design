@@ -2,8 +2,10 @@
 
 How to run
 
-in front end do npm run dev
-
-in backend do
+cd backend
 source venv/bin/activate
-python3 server.py
+uvicorn api:app --reload
+
+cd frontend
+npm install
+npm run dev
