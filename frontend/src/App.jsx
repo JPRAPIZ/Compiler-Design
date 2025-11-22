@@ -105,10 +105,9 @@ const handleSubmit = async () => {
       const row = (err.start_line ?? err.line ?? 1) - 1;
       const col = (err.start_col  ?? err.col  ?? 1) - 1;
 
-      // Move cursor & scroll there
       editor.focus();
-      editor.gotoLine(row + 1, col, true);      // line is 1-based, col is 0-based
-      editor.selection.moveTo(row, col);        // put caret at exact position
+      editor.gotoLine(row + 1, col, true);      
+      editor.selection.moveTo(row, col);       
     };
 
 
@@ -171,7 +170,7 @@ const handleSubmit = async () => {
             width="100%"
             height="100%"
             style={{ backgroundColor: '#0a0a0a' }}
-            fontSize={18}
+            fontSize={22}
             annotations={annotations}
             markers={markers} 
           />
@@ -187,7 +186,7 @@ const handleSubmit = async () => {
             </h2>
             <div className="flex-1 overflow-auto p-2 bg-[#0a0a0a] text-red-400">
               {errors.length > 0 ? (
-                <div className="text-sm space-y-1">
+                <div className="text-lg space-y-1">
                   {errors.map((err, i) => (
                     <div
                       key={i}
@@ -211,8 +210,8 @@ const handleSubmit = async () => {
               <table className="w-full text-sm text-gray-300">
                 <thead className="sticky top-0 bg-[#222]">
                   <tr>
-                    <th className="px-2 py-1 text-left font-semibold">Token</th>
                     <th className="px-2 py-1 text-left font-semibold">Lexeme</th>
+                    <th className="px-2 py-1 text-left font-semibold">Token</th>
                     <th className="px-2 py-1 text-left font-semibold">Line</th>
                     <th className="px-2 py-1 text-left font-semibold">Col</th>
                   </tr>
@@ -220,22 +219,21 @@ const handleSubmit = async () => {
                 <tbody className="bg-[#0a0a0a]">
                   {tokens.map((t, idx) => (
                     <tr key={idx} className="border-t border-[#333] hover:bg-[#1a1a1a]">
-                      <td className="px-2 py-1">
-                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-[#333] text-gray-300">
-                          {t.tokenType}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1 font-mono text-gray-100">
+                      <td className="px-3 py-1 text-lg font-mono text-gray-100 whitespace-pre-wrap break-words">
                         {t.lexeme}
                       </td>
-                      <td className="px-2 py-1">{t.line}</td>
-                      <td className="px-2 py-1">{t.column}</td>
+                      <td className="px-2 py-1 text-lg font-mono text-gray-100 whitespace-nowrap">
+                        {t.tokenType}
+                      </td>
+                      <td className="px-2 py-1 text-lg whitespace-nowrap">{t.line}</td>
+                      <td className="px-2 py-1 text-lg whitespace-nowrap">{t.column}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
+
 
         </div>
 

@@ -128,62 +128,32 @@ class Lexer:
                 start_line = self.tokenStartLine
                 start_col  = self.tokenStartColumn
 
-                # Base length
+                # Base length = chars consumed for this token
                 lexeme_len = max(1, self.currentIndex - self.startIndex)
 
                 if self.errorStartLine is not None:
-                    lexeme_len += 1
+                    start_line = self.errorStartLine
+                    start_col  = self.errorStartColumn
+                    lexeme_len = 1 
 
                 end_line = start_line
                 end_col  = start_col + lexeme_len
 
                 self.errors.append({
                     "message": str(e),
-
                     "line": start_line,
                     "col": start_col,
-
                     "start_line": start_line,
                     "start_col": start_col,
                     "end_line": end_line,
                     "end_col": end_col,
                 })
 
-                self.consumeErrorChar()
-                self.recoverFromError()
-
-        # DITO EOF
+        # EOF token
         eof_token = Token("$", "EOF", self.line, self.column)
         self.tokenList.append(eof_token)
 
-
-
         return self.tokenList
-
-
-    def consumeErrorChar(self):
-    # consume the error character
-        if not self.isAtEnd():
-            self.advanceChar()
-
-    def recoverFromError(self):
-        """
-        Skip ONLY the invalid lexeme and continue lexing.
-        Recovery stops when:
-            - we hit whitespace
-            - OR a delimiter (; { })
-            - OR end-of-line
-        """
-        while not self.isAtEnd():
-            ch = self.peekChar()
-
-            if ch in {' ', '\t', '\n', ';', '{', '}'}:
-                return
-
-            self.advanceChar()
-
-
-
 
     def isAtEnd(self) -> bool:
         return self.currentIndex >= len(self.source)
@@ -222,11 +192,12 @@ class Lexer:
     def addToken(self, tokenType: str, lexeme: str | None = None):
         if lexeme is None:
             lexeme = self.source[self.startIndex:self.currentIndex]
-        col = self.column - len(lexeme)
-        token = Token(tokenType, lexeme, self.line, col)
 
-        self.checkDelimiter(tokenType)
-        self.tokenList.append(token)
+        line = self.tokenStartLine
+        col = self.tokenStartColumn
+
+        self.tokenList.append(Token(tokenType, lexeme, line, col))
+
 
 
 
@@ -346,7 +317,7 @@ class Lexer:
                     f"Expected identifier after '.'"
                 )
             
-            if not self.tokenList or self.tokenList[-1].tokenType != "id":
+            if not self.tokenList or not self.tokenList[-1].tokenType.startswith("id"):
                 raise LexerError(
                     f"'.' can only appear after an identifier (line {self.line})"
                 )
@@ -379,7 +350,7 @@ class Lexer:
             self.scanIdentifier()
             return
 
-        # 8. Anything else is an error
+        # 8. Anything else = error
         raise LexerError(f"Unexpected character {ch!r} at {self.line}:{self.column}")
 
     def scanSingleLineComment(self):
@@ -389,17 +360,17 @@ class Lexer:
         self.addToken("Single-Line Comment", lexeme)
 
     def scanMultiLineComment(self):
-        """
-        Multi-line comment rules:
-        - Starts with /* and ends with */
-        - Can span multiple lines.
-        - Cannot be nested.
-        - If never closed, everything until EOF is treated as comment.
-        """
+        # NOTES
+        # Multi-line comment rules:
+        # - Starts with /* and ends with */
+        # - Can span multiple lines.
+        # - Cannot be nested.
+        # - If never closed, everything until EOF is treated as comment.
+
         while not self.isAtEnd():
             if self.peekChar() == '*' and self.peekNextChar() == '/':
-                self.advanceChar()  # '*'
-                self.advanceChar()  # '/'
+                self.advanceChar()
+                self.advanceChar()  
                 break
             else:
                 self.advanceChar()
@@ -409,15 +380,15 @@ class Lexer:
 
 
     def scanWallLiteral(self):
-        """
-        wall literal rules:
-        - Written inside double quotes: "..."
-        - May be empty: ""
-        - Accept any printable ASCII characters (we'll forbid raw newline).
-        - Valid escapes: \n, \t, \\, \', \", \0
-        - A single backslash '\' alone is not allowed.
-        - '//' or '/*' inside a wall are just text, not comments.
-        """
+        
+        # wall literal rules:
+        # - Written inside double quotes: "..."
+        # - Can be empty: ""
+        # - Accept any printable ASCII characters
+        # - Valid escapes: \n, \t, \\, \', \", \0
+        # - A single backslash '\' is not allowed.
+        # - '//' or '/*' inside a wall are just text, not comments.
+
         while not self.isAtEnd():
             ch = self.advanceChar()
 
@@ -449,31 +420,26 @@ class Lexer:
 
 
     def scanNumberLiteral(self, isNegative: bool = False):
-        """
-        Scan a tile_lit (integer) or glass_lit (floating) literal.
+        # TILE (integer):
+        # - Optional single leading '-' (handled by caller, isNegative=True).
+        # - Digits only (0–9).
+        # - No '.' → tile_lit.
+        # - Leading zeros allowed.
+        # - No letters/special chars inside the same lexeme.
 
-        Lexical rules enforced here:
+        # GLASS (floating):
+        # - Optional single leading '-' (isNegative=True).
+        # - At least one digit before '.'.
+        # - Exactly one '.'.
+        # - At least one digit after '.'.
+        # - No letters/special chars inside the same lexeme.
+        # - No scientific notation.
 
-        TILE (integer):
-        - Optional single leading '-' (handled by caller, isNegative=True).
-        - Digits only (0–9).
-        - No '.' → tile_lit.
-        - Leading zeros allowed.
-        - No letters/special chars inside the same lexeme.
+        # Range
+        # - tile: up to 15 digits in the integer magnitude.
+        # - glass: up to 15 digits in integer part, 7 in fractional part.
 
-        GLASS (floating):
-        - Optional single leading '-' (isNegative=True).
-        - At least one digit before '.'.
-        - Exactly one '.'.
-        - At least one digit after '.'.
-        - No letters/special chars inside the same lexeme.
-        - No scientific notation.
-
-        Range (for now, we check digit counts only):
-        - tile: up to 15 digits in the integer magnitude.
-        - glass: up to 15 digits in integer part, 7 in fractional part.
-        """
-        # Consume integer part digits
+        # Read integer part digits
         while self.peekChar().isdigit():
             self.advanceChar()
 
@@ -514,6 +480,7 @@ class Lexer:
             if fracDigits == '':
                 fracDigits = '0'
 
+            # LENGTH OF DIGITS CHANGE INTO VARIABLE FOR EASIER CHANGING - PLACEHOLDER |APPLE|
             if len(intDigits) > 15:
                 raise LexerError(
                     f"glass literal integer part exceeds 15 digits at line {self.line}"
@@ -546,14 +513,14 @@ class Lexer:
 
 
     def scanBrickLiteral(self):
-        """
-        brick literal rules:
-        - Written inside single quotes: 'x'
-        - Exactly one character OR one valid escape sequence.
-        - No empty character: '' is invalid.
-        - Valid escapes: \n, \t, \\, \', \", \0
-        - Whitespace counts as a valid character.
-        """
+
+        # brick literal rules:
+        # - Written inside single quotes: 'x'
+        # - Exactly one character OR one valid escape sequence.
+        # - No empty character: '' is invalid.
+        # - Valid escapes: \n, \t, \\, \', \", \0
+        # - Whitespace counts as a valid character.
+
         if self.isAtEnd():
             raise LexerError(f"Unterminated brick literal at line {self.line}")
 
@@ -605,6 +572,7 @@ class Lexer:
 
         lexeme = self.source[self.startIndex:self.currentIndex]
 
+        # IDENTIFIER LENGTH PLACEHOLDER |Bravo|
         # Max length 20
         if len(lexeme) > 20:
             raise LexerError(
@@ -620,10 +588,10 @@ class Lexer:
 
 
     def checkDelimiter(self, tokenType: str):
-        """
-        After emitting a token, ensure the next character belongs
-        to the correct delimiter set for that tokenType.
-        """
+
+        # After reading a token, ensure the next character belongs
+        # to the correct delimiter set for that tokenType.
+
         ch = self.peekChar()
 
         if ch == '\0':
@@ -775,7 +743,7 @@ class Lexer:
         if tokenType in delim10:
             if not (
                 isAlphaNumChar(ch) or
-                ch in {'+', '-', '!', '\'',} or
+                ch in {'+', '-', '!', '\'', '(',} or
                 isWhitespaceChar(ch)
             ):
                 self.errorStartLine = self.line
