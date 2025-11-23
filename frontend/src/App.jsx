@@ -173,6 +173,8 @@ const handleSubmit = async () => {
               showLineNumbers: true,
               tabSize: 5,
               useSoftTabs: false,
+              highlightActiveLine: false,   // add this
+              highlightSelectedWord: false, // (optional) if you don’t want the word highlight either
               
             }}
             width="100%"

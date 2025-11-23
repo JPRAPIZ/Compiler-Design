@@ -1,85 +1,7 @@
+# backend/lexer.py
+
 from typing import List
-from tokens import Token, formatToken
-
-KEYWORDS = {
-    "tile", "glass", "brick", "wall", "beam", "field", "house",
-    "if", "else", "room", "door", "ground",
-    "for", "while", "do",
-    "crack", "mend", "home",
-    "blueprint", "view", "write",
-    "solid", "fragile", "cement", "roof",
-}
-
-OPERATORS = {
-    "+", "-", "*", "/", "%",
-    "++", "--",
-    "=", "+=", "-=", "*=", "/=", "%=",
-    "<", ">", "==", "!=", "<=", ">=",
-    "&&", "||", "!",
-}
-
-SYMBOLS = {
-    "{", "}", "(", ")", "[", "]",
-    ":", ";", ",", ".", "&",
-}
-
-def isNumberChar(ch: str) -> bool:
-    return ch in {'0','1','2','3','4','5','6','7','8','9'}
-
-def isAlphaIdChar(ch: str) -> bool:
-    return (ch.isalpha() and ch.isascii()) or ch == '_'
-
-def isAlphaNumChar(ch: str) -> bool:
-    return isNumberChar(ch) or isAlphaIdChar(ch)
-
-def isWhitespaceChar(ch: str) -> bool:
-    return ch == ' ' or ch == '\t' or ch == '\n'
-
-def isOperatorChar(ch: str) -> bool:
-    return ch in {'+','-','*','/','%','<','>','=','!','&','|'}
-
-def isAscii3(ch: str) -> bool:
-    if not ch or len(ch) != 1:
-        return False
-    o = ord(ch)
-    return 32 <= o <= 126
-
-# Tokens wit delimiter whitespace
-whitespace = {
-    "beam", "brick", "cement", "door", "field",
-    "glass", "home", "house", "roof", "tile", "wall", ":"
-}
-
-# Tokens wit delimiter alpha_id
-alpha_id = {"&", "."}
-
-delim1  = {"blueprint", "for", "if", "room", "view", "while", "write"}
-delim2  = {"crack", "mend"}
-delim3  = {"do", "else"}
-delim4  = {"fragile", "solid"}
-delim5  = {"ground"}
-delim6  = {"="}
-delim7  = {"==", ">", ">=", "<", "<=", "!", "!=", "&&", "||"}
-delim8  = {"+"}
-delim9  = {"++", "--"}
-delim10 = {"+=", "-=", "*", "*=", "/", "/=", "%", "%="}
-delim11 = {"-"}
-delim12 = {"{"}
-delim13 = {"}"}
-delim14 = {"("}
-delim15 = {")"}
-delim16 = {"["}
-delim17 = {"]"}
-delim18 = {","}
-delim19 = {";"}
-delim20 = {"id"}
-delim21 = {"tile_lit"}
-delim22 = {"glass_lit"}
-delim23 = {"brick_lit"}
-delim24 = {"wall_lit"}
-delim25 = {"Multi-Line Comment"}
-
-newline = {"Single-Line Comment"}
+from tokens import Token
 
 
 class LexerError(Exception):
@@ -88,873 +10,2113 @@ class LexerError(Exception):
 class Lexer:
     def __init__(self, source: str):
         self.source = source
-        self.tokenList: List[Token] = []
+        self.pos = 0
+        self.current = self.source[0] if self.source else None
+        self.tokens: List[Token] = []
 
-        self.startIndex = 0
-        self.currentIndex = 0
+        self.errors: list[dict] = []
 
         self.line = 1
         self.column = 1
 
-        self.errors: list[dict] = []
+        self.token_start_pos = 0
+        self.token_start_line = 1
+        self.token_start_col = 1
 
-        self.tokenStartLine = 1
-        self.tokenStartColumn = 1
+        # ID counter + map: lexeme -> index
+        self.id_table: dict[str, int] = {}
+        self.next_id_index: int = 1
 
-        self.errorStartLine = None
-        self.errorStartColumn = None
+    def add_error(self, message: str, *, start_line=None, start_col=None):
+        """Record an error at the current position without raising."""
+        self.errors.append({
+            "message": message,
+            "line": self.line,
+            "col": self.column,
+            "start_line": start_line if start_line is not None else self.line,
+            "start_col": start_col if start_col is not None else self.column,
+            "end_line": self.line,
+            "end_col": self.column,
+        })
 
-        self.idCounter = 0
-        self.idMap = {}
+    def get_id_token_type(self, lexeme: str) -> str:
+        """
+        Map each distinct identifier lexeme to a stable idN name.
+        Example: x,y,z,x -> id1, id2, id3, id1
+        """
+        idx = self.id_table.get(lexeme)
+        if idx is None:
+            idx = self.next_id_index
+            self.id_table[lexeme] = idx
+            self.next_id_index += 1
+        return f"id{idx}"
 
 
-    def getIdTokenType(self, lexeme: str) -> str:
-        if lexeme not in self.idMap:
-            self.idCounter += 1
-            self.idMap[lexeme] = f"id{self.idCounter}"
-        return self.idMap[lexeme]
+    # ============================================================
+    # Basic helpers
+    # ============================================================
 
-    def scanTokens(self) -> List[Token]:
-        while not self.isAtEnd():
-            self.startIndex = self.currentIndex
-            self.tokenStartLine = self.line
-            self.tokenStartColumn = self.column
-            self.errorStartLine = None
-            self.errorStartColumn = None
-
-            try:
-                self.scanToken()
-            except LexerError as e:
-                start_line = self.tokenStartLine
-                start_col  = self.tokenStartColumn
-
-                # Base length = chars consumed for this token
-                lexeme_len = max(1, self.currentIndex - self.startIndex)
-
-                if self.errorStartLine is not None:
-                    start_line = self.errorStartLine
-                    start_col  = self.errorStartColumn
-                    lexeme_len = 1 
-
-                end_line = start_line
-                end_col  = start_col + lexeme_len
-
-                self.errors.append({
-                    "message": str(e),
-                    "line": start_line,
-                    "col": start_col,
-                    "start_line": start_line,
-                    "start_col": start_col,
-                    "end_line": end_line,
-                    "end_col": end_col,
-                })
-
-        # EOF token
-        eof_token = Token("$", "EOF", self.line, self.column)
-        self.tokenList.append(eof_token)
-
-        return self.tokenList
-
-    def isAtEnd(self) -> bool:
-        return self.currentIndex >= len(self.source)
-
-    def advanceChar(self) -> str:
-        ch = self.source[self.currentIndex]
-        self.currentIndex += 1
-
-        if ch == '\n':
+    def advance(self):
+        """Move one character forward, updating current, line, column."""
+        if self.current == '\n':
             self.line += 1
             self.column = 1
         else:
             self.column += 1
 
-        return ch
+        self.pos += 1
+        self.current = self.source[self.pos] if self.pos < len(self.source) else None
 
-    def peekChar(self) -> str:
-        if self.isAtEnd():
-            return '\0'
-        return self.source[self.currentIndex]
+    def peek(self):
+        nxt = self.pos + 1
+        return self.source[nxt] if nxt < len(self.source) else None
 
-    def peekNextChar(self) -> str:
-        if self.currentIndex + 1 >= len(self.source):
-            return '\0'
-        return self.source[self.currentIndex + 1]
+    # ------------------------------------------------------------
+    # Character classes
+    # ------------------------------------------------------------
 
-    def matchChar(self, expected: str) -> bool:
-        if self.isAtEnd():
-            return False
-        if self.source[self.currentIndex] != expected:
-            return False
-        self.currentIndex += 1
-        self.column += 1
-        return True
+    def is_eof(self, ch) -> bool:
+        return ch is None
 
-    def addToken(self, tokenType: str, lexeme: str | None = None):
-        if lexeme is None:
-            lexeme = self.source[self.startIndex:self.currentIndex]
+    def is_number(self, ch) -> bool:
+        return ch is not None and ch.isdigit()
 
-        line = self.tokenStartLine
-        col = self.tokenStartColumn
+    def is_alpha_id(self, ch) -> bool:
+        return ch is not None and (ch.isalpha() or ch == '_')
 
-        tok = Token(tokenType, lexeme, line, col)
-        self.tokenList.append(tok)
-        self.checkDelimiter(tokenType)
+    def is_alpha_num(self, ch) -> bool:
+        return self.is_number(ch) or self.is_alpha_id(ch)
 
-    def scanToken(self):
-        ch = self.advanceChar()
+    def is_whitespace(self, ch) -> bool:
+        return ch in (' ', '\t', '\n')
 
-        # 1. Whitespace
-        if ch == ' ':
-            self.addToken("space", " ")
-            return
-        if ch == '\t':
-            self.addToken("tab", "\t")
-            return
-        if ch == '\n':
-            self.tokenList.append(Token("newline", "\n", self.line - 1, 1))
-            return
+    def is_operator_char(self, ch) -> bool:
+        return ch in "+-*/%<>=!&|"
 
-        # 2. Multi-character operators and '&' symbol
-        if ch == '+':
-            if self.matchChar('+'):
-                self.addToken("++")
-            elif self.matchChar('='):
-                self.addToken("+=")
-            else:
-                self.addToken("+")
-            return
+    def is_ascii_range(self, ch, lo: int, hi: int) -> bool:
+        return ch is not None and lo <= ord(ch) <= hi
 
-        if ch == '-':
-            # --, -=, negative numbers, or '-'
-            if self.matchChar('-'):
-                self.addToken("--")
-            elif self.matchChar('='):
-                self.addToken("-=")
-            elif self.peekChar().isdigit():
-                # Negative number literal (tile or glass)
-                self.scanNumberLiteral(isNegative=True)
-            else:
-                self.addToken("-")
-            return
+    def is_ascii1(self, ch) -> bool:
+        # ascii code 32 to 126 excluding \ and '
+        return self.is_ascii_range(ch, 32, 126) and ch not in ('\\', "'")
 
-        if ch == '*':
-            if self.matchChar('='):
-                self.addToken("*=")
-            else:
-                self.addToken("*")
-            return
+    def is_ascii2(self, ch) -> bool:
+        # ascii code 32 to 126 excluding \ and "
+        return self.is_ascii_range(ch, 32, 126) and ch not in ('\\', '"')
 
-        if ch == '%':
-            if self.matchChar('='):
-                self.addToken("%=")
-            else:
-                self.addToken("%")
-            return
+    def is_ascii3(self, ch) -> bool:
+        # ascii code 32 to 126
+        return self.is_ascii_range(ch, 32, 126)
 
-        if ch == '=':
-            if self.matchChar('='):
-                self.addToken("==")
-            else:
-                self.addToken("=")
-            return
+    def is_ascii4(self, ch) -> bool:
+        # ascii code 32 to 126 excluding *
+        return self.is_ascii_range(ch, 32, 126) and ch != '*'
 
-        if ch == '!':
-            if self.matchChar('='):
-                self.addToken("!=")
-            else:
-                self.addToken("!")
-            return
+    def is_ascii5(self, ch) -> bool:
+        # ascii code 32 to 126 excluding /
+        return self.is_ascii_range(ch, 32, 126) and ch != '/'
 
-        if ch == '<':
-            if self.matchChar('='):
-                self.addToken("<=")
-            else:
-                self.addToken("<")
-            return
+    def is_escape_seq_char(self, ch) -> bool:
+        # { n , t , ' , " , \ , 0 }
+        return ch in ('n', 't', "'", '"', '\\', '0')
 
-        if ch == '>':
-            if self.matchChar('='):
-                self.addToken(">=")
-            else:
-                self.addToken(">")
-            return
+    # ============================================================
+    # Delimiters  (delim1 ... delim25)
+    # ============================================================
 
-        if ch == '&':
-            if self.matchChar('&'):
-                self.addToken("&&")
-            else:
-                self.addToken("&")
-            return
+    def is_delim1(self, ch) -> bool:
+        # { ( , whitespace }
+        return self.is_eof(ch) or ch == '(' or self.is_whitespace(ch)
 
-        if ch == '|':
-            if self.matchChar('|'):
-                self.addToken("||")
-            else:
-                raise LexerError(f"Unexpected '|' at {self.line}:{self.column}")
-            return
+    def is_delim2(self, ch) -> bool:
+        # { ; , whitespace }
+        return self.is_eof(ch) or ch == ';' or self.is_whitespace(ch)
 
-        # 3. Divide, comments, or "/="
-        if ch == '/':
-            if self.matchChar('/'):
-                self.scanSingleLineComment()
-            elif self.matchChar('*'):
-                self.scanMultiLineComment()
-            elif self.matchChar('='):
-                self.addToken("/=")
-            else:
-                self.addToken("/")
-            return
+    def is_delim3(self, ch) -> bool:
+        # { { , whitespace }
+        return self.is_eof(ch) or ch == '{' or self.is_whitespace(ch)
 
-        # 4. Dot handling
-        if ch == '.':
-            # dot MUST be followed by identifier start
-            next_ch = self.peekChar()
-            
-            if not isAlphaIdChar(next_ch):
-                raise LexerError(
-                    f"Invalid structure access '.' at {self.line}:{self.column}. "
-                    f"Expected identifier after '.'"
+    def is_delim4(self, ch) -> bool:
+        # { operators , } , ) , ] , : , ; , , ,  whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_operator_char(ch)
+            or ch in ('}', ')', ']', ':', ';', ',')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim5(self, ch) -> bool:
+        # { : , whitespace }
+        return self.is_eof(ch) or ch == ':' or self.is_whitespace(ch)
+
+    def is_delim6(self, ch) -> bool:
+        # { alpha_num , + , - , ! , { , ( , ' , " , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or ch in ('+', '-', '!', '{', '(', "'", '"')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim7(self, ch) -> bool:
+        # { alpha_num , + , - , ! , ( , ' , " ,  whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or ch in ('+', '-', '!', '(', "'", '"')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim8(self, ch) -> bool:
+        # { alpha_num , - , ! , ( , ' , " , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or ch in ('-', '!', '(', "'", '"')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim9(self, ch) -> bool:
+        # { alpha_id , ) , ] , , , ; , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_id(ch)
+            or ch in (')', ']', ',', ';')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim10(self, ch) -> bool:
+        # { alpha_num , + , - , ! , ' , ( , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or ch in ('+', '-', '!', "'", '(')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim11(self, ch) -> bool:
+        # { alpha_id , + , ! , ( , ' , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_id(ch)
+            or ch in ('+', '!', '(', "'")
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim12(self, ch) -> bool:
+        # { alpha_num , - , { , ' , " , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or ch in ('-', '{', "'", '"')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim13(self, ch) -> bool:
+        # { alpha_id, } , ; , , , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_id(ch)
+            or ch in ('}', ';', ',')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim14(self, ch) -> bool:
+        # { alpha_num , - , + , ! , ( , ) , ' , " , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or ch in ('-', '+', '!', '(', ')', "'", '"')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim15(self, ch) -> bool:
+        # { operators , { , ) , ] , ; , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_operator_char(ch)
+            or ch in ('{', ')', ']', ';')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim16(self, ch) -> bool:
+        # { alpha_num , + , - , ! , ( , ] , ' , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or ch in ('+', '-', '!', '(', ']', "'")
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim17(self, ch) -> bool:
+        # { operators , ) , [ , ; , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_operator_char(ch)
+            or ch in (')', '[', ';')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim18(self, ch) -> bool:
+        # { alpha_num , - , & , ' , " , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or ch in ('-', '&', "'", '"')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim19(self, ch) -> bool:
+        # { alpha_num , + , - , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or ch in ('+', '-')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim20(self, ch) -> bool:
+        # { operators , ( , ) , [ , ] , . , , , ; , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_operator_char(ch)
+            or ch in ('(', ')', '[', ']', '.', ',', ';')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim21(self, ch) -> bool:
+        # { operators, ) , ] , } , , , : , ; , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_operator_char(ch)
+            or ch in (')', ']', '}', ',', ':', ';')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim22(self, ch) -> bool:
+        # { operators, ) , ] , } , , , ; , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_operator_char(ch)
+            or ch in (')', ']', '}', ',', ';')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim23(self, ch) -> bool:
+        # { operators , ) , ] , } , , , : , ; , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_operator_char(ch)
+            or ch in (')', ']', '}', ',', ':', ';')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim24(self, ch) -> bool:
+        # { + , > , < , = , ! , & , | , ) , , , ; , whitespace }
+        return (
+            self.is_eof(ch)
+            or ch in ('+', '>', '<', '=', '!', '&', '|', ')', ',', ';')
+            or self.is_whitespace(ch)
+        )
+
+    def is_delim25(self, ch) -> bool:
+        # { ascii3 , whitespace }
+        if self.is_eof(ch):
+            return True
+        return self.is_ascii3(ch) or self.is_whitespace(ch)
+
+    # ============================================================
+    # Public API
+    # ============================================================
+
+    def scanTokens(self) -> List[Token]:
+        """Scan the entire source into a list of tokens."""
+        while self.current is not None:
+            # remember where this token starts (for error highlighting)
+            self.token_start_pos = self.pos
+            self.token_start_line = self.line
+            self.token_start_col = self.column
+
+            try:
+                # one DFA run per token/comment/whitespace
+                self.lex_from_state0()
+
+            except LexerError as e:
+                # 1) store the error, so api.py + frontend can show it
+                self.add_error(
+                    str(e),
+                    start_line=self.token_start_line,
+                    start_col=self.token_start_col,
                 )
-            
-            if not self.tokenList or not self.tokenList[-1].tokenType.startswith("id"):
-                raise LexerError(
-                    f"'.' can only appear after an identifier (line {self.line})"
+
+                # 2) also push an ERROR token so it appears in the token area
+                end_index = self.pos
+                if self.current is not None:
+                    end_index = self.pos + 1
+
+                err_lexeme = self.source[self.token_start_pos:end_index]
+                self.tokens.append(
+                    Token("ERROR", err_lexeme, self.token_start_line, self.token_start_col)
                 )
-            
-            self.addToken(".")
-            return
 
+                # 3) recovery: advance at least 1 char to avoid infinite loop,
+                #    then continue scanning. This allows multiple errors on the same line.
+                if self.current is not None:
+                    self.advance()
 
-        # 4. Simple one-char symbols
-        if ch in "{}()[]:;,.":
-            self.addToken(ch)
-            return
-
-        if ch == '"':
-            self.scanWallLiteral()
-            return
-
-        # 5. Brick literal
-        if ch == "'":
-            self.scanBrickLiteral()
-            return
-
-        # 6. Number literal: tile_lit or glass_lit
-        if ch.isdigit():
-            self.scanNumberLiteral(isNegative=False)
-            return
-
-        # 7. Identifier or keyword (ASCII letter or underscore)
-        if isAlphaIdChar(ch):
-            self.scanIdentifier()
-            return
-
-        # 8. Anything else = error
-        raise LexerError(f"Unexpected character {ch!r} at {self.line}:{self.column}")
-
-    def scanSingleLineComment(self):
-        while not self.isAtEnd() and self.peekChar() != '\n':
-            self.advanceChar()
-        lexeme = self.source[self.startIndex:self.currentIndex]
-        self.addToken("Single-Line Comment", lexeme)
-
-    def scanMultiLineComment(self):
-        # NOTES
-        # Multi-line comment rules:
-        # - Starts with /* and ends with */
-        # - Can span multiple lines.
-        # - Cannot be nested.
-        # - If never closed, everything until EOF is treated as comment.
-
-        while not self.isAtEnd():
-            if self.peekChar() == '*' and self.peekNextChar() == '/':
-                self.advanceChar()
-                self.advanceChar()  
-                break
-            else:
-                self.advanceChar()
-
-        lexeme = self.source[self.startIndex:self.currentIndex]
-        self.addToken("Multi-Line Comment", lexeme)
-
-
-    def scanWallLiteral(self):
-        
-        # wall literal rules:
-        # - Written inside double quotes: "..."
-        # - Can be empty: ""
-        # - Accept any printable ASCII characters
-        # - Valid escapes: \n, \t, \\, \', \", \0
-        # - A single backslash '\' is not allowed.
-        # - '//' or '/*' inside a wall are just text, not comments.
-
-        while not self.isAtEnd():
-            ch = self.advanceChar()
-
-            if ch == '"':
-                lexeme = self.source[self.startIndex:self.currentIndex]
-                self.addToken("wall_lit", lexeme)
-                return
-
-            if ch == '\n':
-                raise LexerError(f"Unterminated wall literal: missing closing '\"' before end of line {self.line - 1}")
-
-            if ch == '\\':
-                if self.isAtEnd():
-                    raise LexerError(f"Incomplete escape at end of wall literal (line {self.line})")
-
-                esc = self.advanceChar()
-                validEscapes = {'n', 't', '\\', '\'', '"', '0'}
-                if esc not in validEscapes:
-                    raise LexerError(f"Invalid escape '\\{esc}' in wall literal at line {self.line}")
                 continue
 
-            # Any other character must be printable ASCII 32–126
-            if not isAscii3(ch):
+        # EOF token (same idea as old lexer)
+        eof = Token("$", "EOF", self.line, self.column)
+        self.tokens.append(eof)
+        return self.tokens
+
+
+
+
+
+    # ============================================================
+    # Main DFA (transition table encoded as states)
+    # ============================================================
+
+    def lex_from_state0(self):
+        start_pos = self.pos
+        start_line = self.line
+        start_col = self.column
+
+        self.token_start_pos = start_pos
+        self.token_start_line = start_line
+        self.token_start_col = start_col
+
+        state = 0
+
+
+        while True:
+            ch = self.current
+
+            # ================= STATE 0 (start) =================
+            if state == 0:
+
+                # --- whitespace tokens ---
+                if ch == ' ':
+                    self.advance()
+                    state = 193   # space
+                    continue
+
+                if ch == '\t':
+                    self.advance()
+                    state = 194   # tab
+                    continue
+
+                if ch == '\n':
+                    self.advance()
+                    state = 195   # newline
+                    continue
+
+                # --- keywords by first letter ---
+                if ch == 'b':
+                    self.advance()
+                    state = 1
+                    continue
+
+                if ch == 'c':
+                    self.advance()
+                    state = 20
+                    continue
+
+                if ch == 'd':
+                    self.advance()
+                    state = 32
+                    continue
+
+                if ch == 'e':
+                    self.advance()
+                    state = 38
+                    continue
+
+                if ch == 'f':
+                    self.advance()
+                    state = 43
+                    continue
+
+                if ch == 'g':
+                    self.advance()
+                    state = 59
+                    continue
+
+                if ch == 'h':
+                    self.advance()
+                    state = 71
+                    continue
+
+                if ch == 'i':
+                    self.advance()
+                    state = 80
+                    continue
+
+                if ch == 'm':
+                    self.advance()
+                    state = 83
+                    continue
+
+                if ch == 'r':
+                    self.advance()
+                    state = 88
+                    continue
+
+                if ch == 's':
+                    self.advance()
+                    state = 95
+                    continue
+
+                if ch == 't':
+                    self.advance()
+                    state = 101
+                    continue
+
+                if ch == 'v':
+                    self.advance()
+                    state = 106
+                    continue
+
+                if ch == 'w':
+                    self.advance()
+                    state = 111
+                    continue
+
+                # --- numbers (integer / float) ---
+                if self.is_number(ch):
+                    self.advance()
+                    state = 236
+                    continue
+
+                # --- operators & punctuation ---
+                if ch == '=':
+                    self.advance()
+                    state = 126
+                    continue
+
+                if ch == '+':
+                    self.advance()
+                    state = 130
+                    continue
+
+                if ch == '-':
+                    self.advance()
+                    state = 136
+                    continue
+
+                if ch == '*':
+                    self.advance()
+                    state = 142
+                    continue
+
+                if ch == '/':
+                    self.advance()
+                    state = 146
+                    continue
+
+                if ch == '%':
+                    self.advance()
+                    state = 150
+                    continue
+
+                if ch == '>':
+                    self.advance()
+                    state = 154
+                    continue
+
+                if ch == '<':
+                    self.advance()
+                    state = 158
+                    continue
+
+                if ch == '!':
+                    self.advance()
+                    state = 162
+                    continue
+
+                if ch == '&':
+                    self.advance()
+                    state = 166
+                    continue
+
+                if ch == '|':
+                    self.advance()
+                    state = 170
+                    continue
+
+                if ch == '{':
+                    self.advance()
+                    state = 173
+                    continue
+
+                if ch == '}':
+                    self.advance()
+                    state = 175
+                    continue
+
+                if ch == '(':
+                    self.advance()
+                    state = 177
+                    continue
+
+                if ch == ')':
+                    self.advance()
+                    state = 179
+                    continue
+
+                if ch == '[':
+                    self.advance()
+                    state = 181
+                    continue
+
+                if ch == ']':
+                    self.advance()
+                    state = 183
+                    continue
+
+                if ch == '.':
+                    self.advance()
+                    state = 185
+                    continue
+
+                if ch == ',':
+                    self.advance()
+                    state = 187
+                    continue
+
+                if ch == ':':
+                    self.advance()
+                    state = 189
+                    continue
+
+                if ch == ';':
+                    self.advance()
+                    state = 191
+                    continue
+
+                # --- brick / wall literals ---
+                if ch == "'":
+                    self.advance()
+                    state = 281
+                    continue
+
+                if ch == '"':
+                    self.advance()
+                    state = 286
+                    continue
+
+                # --- identifiers (generic) ---
+                if self.is_alpha_id(ch):
+                    self.advance()
+                    state = 196
+                    continue
+
                 raise LexerError(
-                    f"wall literal must contain printable ASCII characters (got {ch!r}) at line {self.line}"
+                    f"Unexpected start of token {ch!r} at line {self.line}, col {self.column}"
                 )
 
-        raise LexerError(f"Unterminated wall literal starting at line {self.line}")
+            # ===================================================
+            # b-branch (beam / blueprint / brick) 1–18
+            # ===================================================
+
+            elif state == 1:
+                if ch == 'e':
+                    self.advance()
+                    state = 2
+                    continue
+                if ch == 'l':
+                    self.advance()
+                    state = 6
+                    continue
+                if ch == 'r':
+                    self.advance()
+                    state = 15
+                    continue
+                state = 196
+                continue
+
+            # beam: b e a m
+            elif state == 2:
+                if ch == 'a':
+                    self.advance()
+                    state = 3
+                    continue
+                state = 196
+                continue
+
+            elif state == 3:
+                if ch == 'm':
+                    self.advance()
+                    state = 4
+                    continue
+                state = 196
+                continue
+
+            elif state == 4:
+                if self.is_delim1(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("beam", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # blueprint: b l u e p r i n t
+            elif state == 6:
+                if ch == 'u':
+                    self.advance()
+                    state = 7
+                    continue
+                state = 196
+                continue
+
+            elif state == 7:
+                if ch == 'e':
+                    self.advance()
+                    state = 8
+                    continue
+                state = 196
+                continue
+
+            elif state == 8:
+                if ch == 'p':
+                    self.advance()
+                    state = 9
+                    continue
+                state = 196
+                continue
+
+            elif state == 9:
+                if ch == 'r':
+                    self.advance()
+                    state = 10
+                    continue
+                state = 196
+                continue
+
+            elif state == 10:
+                if ch == 'i':
+                    self.advance()
+                    state = 11
+                    continue
+                state = 196
+                continue
+
+            elif state == 11:
+                if ch == 'n':
+                    self.advance()
+                    state = 12
+                    continue
+                state = 196
+                continue
+
+            elif state == 12:
+                if ch == 't':
+                    self.advance()
+                    state = 13
+                    continue
+                state = 196
+                continue
+
+            elif state == 13:
+                if self.is_delim1(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("blueprint", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # brick: b r i c k
+            elif state == 15:
+                if ch == 'i':
+                    self.advance()
+                    state = 16
+                    continue
+                state = 196
+                continue
+
+            elif state == 16:
+                if ch == 'c':
+                    self.advance()
+                    state = 17
+                    continue
+                state = 196
+                continue
+
+            elif state == 17:
+                if ch == 'k':
+                    self.advance()
+                    state = 18
+                    continue
+                state = 196
+                continue
+
+            elif state == 18:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("brick", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # c-branch (cement / crack) 20–30
+            # ===================================================
+
+            elif state == 20:
+                if ch == 'e':
+                    self.advance()
+                    state = 21
+                    continue
+                if ch == 'r':
+                    self.advance()
+                    state = 27
+                    continue
+                state = 196
+                continue
+
+            # cement: c e m e n t
+            elif state == 21:
+                if ch == 'm':
+                    self.advance()
+                    state = 22
+                    continue
+                state = 196
+                continue
+
+            elif state == 22:
+                if ch == 'e':
+                    self.advance()
+                    state = 23
+                    continue
+                state = 196
+                continue
+
+            elif state == 23:
+                if ch == 'n':
+                    self.advance()
+                    state = 24
+                    continue
+                state = 196
+                continue
+
+            elif state == 24:
+                if ch == 't':
+                    self.advance()
+                    state = 25
+                    continue
+                state = 196
+                continue
+
+            elif state == 25:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("cement", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # crack: c r a c k
+            elif state == 27:
+                if ch == 'a':
+                    self.advance()
+                    state = 28
+                    continue
+                state = 196
+                continue
+
+            elif state == 28:
+                if ch == 'c':
+                    self.advance()
+                    state = 29
+                    continue
+                state = 196
+                continue
+
+            elif state == 29:
+                if ch == 'k':
+                    self.advance()
+                    state = 30
+                    continue
+                state = 196
+                continue
+
+            elif state == 30:
+                if self.is_delim2(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("crack", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # d-branch (do / door) 32–36
+            # ===================================================
+
+            elif state == 32:
+                if ch == 'o':
+                    self.advance()
+                    state = 33
+                    continue
+                state = 196
+                continue
+
+            elif state == 33:
+                if self.is_delim3(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("do", lexeme, start_line, start_col))
+                    return
+                if ch == 'o':
+                    self.advance()
+                    state = 35
+                    continue
+                state = 196
+                continue
+
+            elif state == 35:
+                if ch == 'r':
+                    self.advance()
+                    state = 36
+                    continue
+                state = 196
+                continue
+
+            elif state == 36:
+                if self.is_delim3(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("door", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # e-branch (else) 38–41
+            # ===================================================
+
+            elif state == 38:
+                if ch == 'l':
+                    self.advance()
+                    state = 39
+                    continue
+                state = 196
+                continue
+
+            elif state == 39:
+                if ch == 's':
+                    self.advance()
+                    state = 40
+                    continue
+                state = 196
+                continue
+
+            elif state == 40:
+                if ch == 'e':
+                    self.advance()
+                    state = 41
+                    continue
+                state = 196
+                continue
+
+            elif state == 41:
+                if self.is_delim3(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("else", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # f-branch (for / field / fragile) 43–57
+            # ===================================================
+
+            elif state == 43:
+                if ch == 'o':
+                    self.advance()
+                    state = 44
+                    continue
+                if ch == 'i':
+                    self.advance()
+                    state = 47
+                    continue
+                if ch == 'r':
+                    self.advance()
+                    state = 52
+                    continue
+                state = 196
+                continue
+
+            # for
+            elif state == 44:
+                if ch == 'r':
+                    self.advance()
+                    state = 45
+                    continue
+                state = 196
+                continue
+
+            elif state == 45:
+                if self.is_delim1(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("for", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # field: f i e l d
+            elif state == 47:
+                if ch == 'e':
+                    self.advance()
+                    state = 48
+                    continue
+                state = 196
+                continue
+
+            elif state == 48:
+                if ch == 'l':
+                    self.advance()
+                    state = 49
+                    continue
+                state = 196
+                continue
+
+            elif state == 49:
+                if ch == 'd':
+                    self.advance()
+                    state = 50
+                    continue
+                state = 196
+                continue
+
+            elif state == 50:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("field", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # fragile: f r a g i l e
+            elif state == 52:
+                if ch == 'a':
+                    self.advance()
+                    state = 53
+                    continue
+                state = 196
+                continue
+
+            elif state == 53:
+                if ch == 'g':
+                    self.advance()
+                    state = 54
+                    continue
+                state = 196
+                continue
+
+            elif state == 54:
+                if ch == 'i':
+                    self.advance()
+                    state = 55
+                    continue
+                state = 196
+                continue
+
+            elif state == 55:
+                if ch == 'l':
+                    self.advance()
+                    state = 56
+                    continue
+                state = 196
+                continue
+
+            elif state == 56:
+                if ch == 'e':
+                    self.advance()
+                    state = 57
+                    continue
+                state = 196
+                continue
+
+            elif state == 57:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("fragile", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # g-branch (glass / ground) 59–69
+            # ===================================================
+
+            elif state == 59:
+                if ch == 'l':
+                    self.advance()
+                    state = 60
+                    continue
+                if ch == 'r':
+                    self.advance()
+                    state = 65
+                    continue
+                state = 196
+                continue
+
+            # glass: g l a s s
+            elif state == 60:
+                if ch == 'a':
+                    self.advance()
+                    state = 61
+                    continue
+                state = 196
+                continue
+
+            elif state == 61:
+                if ch == 's':
+                    self.advance()
+                    state = 62
+                    continue
+                state = 196
+                continue
+
+            elif state == 62:
+                if ch == 's':
+                    self.advance()
+                    state = 63
+                    continue
+                state = 196
+                continue
+
+            elif state == 63:
+                if self.is_delim5(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("glass", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ground: g r o u n d
+            elif state == 65:
+                if ch == 'o':
+                    self.advance()
+                    state = 66
+                    continue
+                state = 196
+                continue
+
+            elif state == 66:
+                if ch == 'u':
+                    self.advance()
+                    state = 67
+                    continue
+                state = 196
+                continue
+
+            elif state == 67:
+                if ch == 'n':
+                    self.advance()
+                    state = 68
+                    continue
+                state = 196
+                continue
+
+            elif state == 68:
+                if ch == 'd':
+                    self.advance()
+                    state = 69
+                    continue
+                state = 196
+                continue
+
+            elif state == 69:
+                if self.is_delim5(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("ground", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # h-branch (home / house) 71–79
+            # ===================================================
+
+            elif state == 71:
+                if ch == 'o':
+                    self.advance()
+                    state = 72
+                    continue
+                state = 196
+                continue
+
+            elif state == 72:
+                if ch == 'm':
+                    self.advance()
+                    state = 73
+                    continue
+                if ch == 'u':
+                    self.advance()
+                    state = 76
+                    continue
+                state = 196
+                continue
+
+            # home: h o m e
+            elif state == 73:
+                if ch == 'e':
+                    self.advance()
+                    state = 74
+                    continue
+                state = 196
+                continue
+
+            elif state == 74:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("home", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # house: h o u s e
+            elif state == 76:
+                if ch == 's':
+                    self.advance()
+                    state = 77
+                    continue
+                state = 196
+                continue
+
+            elif state == 77:
+                if ch == 'e':
+                    self.advance()
+                    state = 78
+                    continue
+                state = 196
+                continue
+
+            elif state == 78:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("house", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # i-branch (if) 80–81
+            # ===================================================
+
+            elif state == 80:
+                if ch == 'f':
+                    self.advance()
+                    state = 81
+                    continue
+                state = 196
+                continue
+
+            elif state == 81:
+                if self.is_delim1(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("if", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # m-branch (mend) 83–86
+            # ===================================================
+
+            elif state == 83:
+                if ch == 'e':
+                    self.advance()
+                    state = 84
+                    continue
+                state = 196
+                continue
+
+            elif state == 84:
+                if ch == 'n':
+                    self.advance()
+                    state = 85
+                    continue
+                state = 196
+                continue
+
+            elif state == 85:
+                if ch == 'd':
+                    self.advance()
+                    state = 86
+                    continue
+                state = 196
+                continue
+
+            elif state == 86:
+                if self.is_delim2(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("mend", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # r-branch (roof / room / rite) 88–93, 121–123
+            # ===================================================
+
+            elif state == 88:
+                if ch == 'o':
+                    self.advance()
+                    state = 89
+                    continue
+                if ch == 'i':
+                    self.advance()
+                    state = 121
+                    continue
+                state = 196
+                continue
+
+            elif state == 89:
+                if ch == 'o':
+                    self.advance()
+                    state = 90
+                    continue
+                state = 196
+                continue
+
+            elif state == 90:
+                if ch == 'f':
+                    self.advance()
+                    state = 91
+                    continue
+                if ch == 'm':
+                    self.advance()
+                    state = 93
+                    continue
+                state = 196
+                continue
+
+            # roof
+            elif state == 91:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("roof", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # room
+            elif state == 93:
+                if self.is_delim1(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("room", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # rite: r i t e
+            elif state == 121:
+                if ch == 't':
+                    self.advance()
+                    state = 122
+                    continue
+                state = 196
+                continue
+
+            elif state == 122:
+                if ch == 'e':
+                    self.advance()
+                    state = 123
+                    continue
+                state = 196
+                continue
+
+            elif state == 123:
+                if self.is_delim1(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("rite", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # s-branch (solid) 95–99
+            # ===================================================
+
+            elif state == 95:
+                if ch == 'o':
+                    self.advance()
+                    state = 96
+                    continue
+                state = 196
+                continue
+
+            elif state == 96:
+                if ch == 'l':
+                    self.advance()
+                    state = 97
+                    continue
+                state = 196
+                continue
+
+            elif state == 97:
+                if ch == 'i':
+                    self.advance()
+                    state = 98
+                    continue
+                state = 196
+                continue
+
+            elif state == 98:
+                if ch == 'd':
+                    self.advance()
+                    state = 99
+                    continue
+                state = 196
+                continue
+
+            elif state == 99:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("solid", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # t-branch (tile) 101–104
+            # ===================================================
+
+            elif state == 101:
+                if ch == 'i':
+                    self.advance()
+                    state = 102
+                    continue
+                state = 196
+                continue
+
+            elif state == 102:
+                if ch == 'l':
+                    self.advance()
+                    state = 103
+                    continue
+                state = 196
+                continue
+
+            elif state == 103:
+                if ch == 'e':
+                    self.advance()
+                    state = 104
+                    continue
+                state = 196
+                continue
+
+            elif state == 104:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("tile", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # v-branch (view) 106–109
+            # ===================================================
+
+            elif state == 106:
+                if ch == 'i':
+                    self.advance()
+                    state = 107
+                    continue
+                state = 196
+                continue
+
+            elif state == 107:
+                if ch == 'e':
+                    self.advance()
+                    state = 108
+                    continue
+                state = 196
+                continue
+
+            elif state == 108:
+                if ch == 'w':
+                    self.advance()
+                    state = 109
+                    continue
+                state = 196
+                continue
+
+            elif state == 109:
+                if self.is_delim1(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("view", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # w-branch (wall / while) 111–119
+            # ===================================================
+
+            elif state == 111:
+                if ch == 'a':
+                    self.advance()
+                    state = 112
+                    continue
+                if ch == 'h':
+                    self.advance()
+                    state = 116
+                    continue
+                state = 196
+                continue
+
+            # wall: w a l l
+            elif state == 112:
+                if ch == 'l':
+                    self.advance()
+                    state = 113
+                    continue
+                state = 196
+                continue
+
+            elif state == 113:
+                if ch == 'l':
+                    self.advance()
+                    state = 114
+                    continue
+                state = 196
+                continue
+
+            elif state == 114:
+                if self.is_delim4(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("wall", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # while: w h i l e
+            elif state == 116:
+                if ch == 'i':
+                    self.advance()
+                    state = 117
+                    continue
+                state = 196
+                continue
+
+            elif state == 117:
+                if ch == 'l':
+                    self.advance()
+                    state = 118
+                    continue
+                state = 196
+                continue
+
+            elif state == 118:
+                if ch == 'e':
+                    self.advance()
+                    state = 119
+                    continue
+                state = 196
+                continue
+
+            elif state == 119:
+                if self.is_delim1(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("while", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # Operators: =, ==, +, ++, +=, -, --, -=, *, *=, /, /=,
+            #            %, %=, >, >=, <, <=  (126–161)
+            # ===================================================
+
+            # '=' or '=='
+            elif state == 126:
+                if ch == '=':
+                    self.advance()
+                    state = 128
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("=", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 128:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("==", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # '+', '++', '+='
+            elif state == 130:
+                if ch == '+':
+                    self.advance()
+                    state = 132
+                    continue
+                if ch == '=':
+                    self.advance()
+                    state = 134
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("+", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 132:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("++", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 134:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("+=", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # '-', '--', '-=' (and negative numbers)
+            elif state == 136:
+                if self.is_number(ch):
+                    self.advance()
+                    state = 236
+                    continue
+                if ch == '-':
+                    self.advance()
+                    state = 138
+                    continue
+                if ch == '=':
+                    self.advance()
+                    state = 140
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("-", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 138:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("--", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 140:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("-=", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # '*', '*='
+            elif state == 142:
+                if ch == '=':
+                    self.advance()
+                    state = 144
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("*", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 144:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("*=", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # '/', '/=', '//' and '/* ... */'
+            elif state == 146:
+                if ch == '/':
+                    self.advance()
+                    state = 290
+                    continue
+                if ch == '*':
+                    self.advance()
+                    state = 292
+                    continue
+                if ch == '=':
+                    self.advance()
+                    state = 148
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("/", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 148:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("/=", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # '%', '%='
+            elif state == 150:
+                if ch == '=':
+                    self.advance()
+                    state = 152
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("%", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 152:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("%=", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # '>', '>='
+            elif state == 154:
+                if ch == '=':
+                    self.advance()
+                    state = 156
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token(">", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 156:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token(">=", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # '<', '<='
+            elif state == 158:
+                if ch == '=':
+                    self.advance()
+                    state = 160
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("<", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 160:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("<=", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # ===================================================
+            # Logical / punctuation / grouping 162–191
+            # ===================================================
+
+            # '!' and '!='
+            elif state == 162:
+                if ch == '=':
+                    self.advance()
+                    state = 164
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("!", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 164:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("!=", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # '&' and '&&'
+            elif state == 166:
+                if ch == '&':
+                    self.advance()
+                    state = 168
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("&", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            elif state == 168:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("&&", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # '||'
+            elif state == 170:
+                if ch == '|':
+                    self.advance()
+                    state = 171
+                    continue
+                state = 196
+                continue
+
+            elif state == 171:
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("||", lexeme, start_line, start_col))
+                    return
+                state = 196
+                continue
+
+            # braces, parens, brackets, punctuation
+            elif state == 173:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("{", lexeme, start_line, start_col))
+                return
+
+            elif state == 175:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("}", lexeme, start_line, start_col))
+                return
+
+            elif state == 177:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("(", lexeme, start_line, start_col))
+                return
+
+            elif state == 179:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token(")", lexeme, start_line, start_col))
+                return
+
+            elif state == 181:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("[", lexeme, start_line, start_col))
+                return
+
+            elif state == 183:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("]", lexeme, start_line, start_col))
+                return
+
+            elif state == 185:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token(".", lexeme, start_line, start_col))
+                return
+
+            elif state == 187:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token(",", lexeme, start_line, start_col))
+                return
+
+            elif state == 189:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token(":", lexeme, start_line, start_col))
+                return
+
+            elif state == 191:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token(";", lexeme, start_line, start_col))
+                return
+
+            # ===================================================
+            # Whitespace tokens: space / tab / newline 193–195
+            # ===================================================
+
+            elif state == 193:  # space
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("space", lexeme, start_line, start_col))
+                return
+
+            elif state == 194:  # tab
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("tab", lexeme, start_line, start_col))
+                return
+
+            elif state == 195:  # newline
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("newline", lexeme, start_line, start_col))
+                return
 
 
-    def scanNumberLiteral(self, isNegative: bool = False):
-        # TILE (integer):
-        # - Optional single leading '-' (handled by caller, isNegative=True).
-        # - Digits only (0–9).
-        # - No '.' → tile_lit.
-        # - Leading zeros allowed.
-        # - No letters/special chars inside the same lexeme.
+            # ===================================================
+            # Generic identifier (alpha_id / alpha_num) 196
+            # ===================================================
 
-        # GLASS (floating):
-        # - Optional single leading '-' (isNegative=True).
-        # - At least one digit before '.'.
-        # - Exactly one '.'.
-        # - At least one digit after '.'.
-        # - No letters/special chars inside the same lexeme.
-        # - No scientific notation.
-
-        # Range
-        # - tile: up to 15 digits in the integer magnitude.
-        # - glass: up to 15 digits in integer part, 7 in fractional part.
-
-        # Read integer part digits
-        while self.peekChar().isdigit():
-            self.advanceChar()
-
-        isGlass = False
-
-        # Check for decimal point (glass literal)
-        if self.peekChar() == '.':
-            isGlass = True
-            self.advanceChar()
-
-            # at least one digit after '.'
-            if not self.peekChar().isdigit():
-                raise LexerError(f"glass literal must have digits after '.' at line {self.line}")
-
-            while self.peekChar().isdigit():
-                self.advanceChar()
-
-            # two or more decimal points are not allowed"
-            if self.peekChar() == '.':
-                raise LexerError(f"glass literal cannot contain more than one '.' at line {self.line}")
-
-        lexeme = self.source[self.startIndex:self.currentIndex]
-
-        if isGlass:
-            # GLASS RULES: max 15 digits integer, 7 digits fractional
-
-            # Remove sign
-            body = lexeme[1:] if lexeme.startswith('-') else lexeme
-            intPart, fracPart = body.split('.')
-
-            # Ignore leading zeros in integer, trailing zeros in fractional
-            intDigits = intPart.lstrip('0')
-            fracDigits = fracPart.rstrip('0')
-
-            # Special case: all zeros treat as "0" / "0.0" logically
-            if intDigits == '':
-                intDigits = '0'
-            if fracDigits == '':
-                fracDigits = '0'
-
-            # LENGTH OF DIGITS CHANGE INTO VARIABLE FOR EASIER CHANGING - PLACEHOLDER |APPLE|
-            if len(intDigits) > 15:
+            elif state == 196:
+                if self.is_alpha_num(ch):
+                    self.advance()
+                    continue
+                if self.is_delim20(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    tok_type = self.get_id_token_type(lexeme)
+                    self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                    return
                 raise LexerError(
-                    f"glass literal integer part exceeds 15 digits at line {self.line}"
+                    f"Invalid character {ch!r} after identifier at line {self.line}"
                 )
 
-            if len(fracDigits) > 7:
+            # ===================================================
+            # Numbers (int + float) 236, 266, 267
+            # ===================================================
+
+            elif state == 236:
+                if self.is_number(ch):
+                    self.advance()
+                    continue
+                if ch == '.':
+                    self.advance()
+                    state = 266
+                    continue
+                if self.is_delim21(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                    return
                 raise LexerError(
-                    f"glass literal fractional part exceeds 7 digits at line {self.line}"
+                    f"Invalid character {ch!r} after integer literal at line {self.line}"
                 )
 
-            tokenType = "glass_lit"
+            elif state == 266:
+                if not self.is_number(ch):
+                    raise LexerError(
+                        f"Expected digit after '.' in float literal at line {self.line}"
+                    )
+                self.advance()
+                state = 267
+                continue
 
-        else:
-            # TILE RULES: no '.', integer only, up to 15 digits in magnitude
-            body = lexeme[1:] if lexeme.startswith('-') else lexeme
-
-            # Ignore leading zeros for magnitude counting
-            magDigits = body.lstrip('0')
-            if magDigits == '':
-                magDigits = '0'
-
-            if len(magDigits) > 15:
+            elif state == 267:
+                if self.is_number(ch):
+                    self.advance()
+                    continue
+                if self.is_delim22(ch):
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(Token("number_float", lexeme, start_line, start_col))
+                    return
                 raise LexerError(
-                    f"tile literal exceeds 15 digits at line {self.line}"
+                    f"Invalid character {ch!r} after float literal at line {self.line}"
                 )
 
-            tokenType = "tile_lit"
+            # ===================================================
+            # Brick literal: 'a' or '\n'   281–284  (unchanged except 284)
+            # ===================================================
 
-        self.addToken(tokenType, lexeme)
+            elif state == 281:
+                if ch == '\\':
+                    self.advance()
+                    state = 282
+                    continue
+                if self.is_ascii1(ch):
+                    self.advance()
+                    state = 283
+                    continue
+                raise LexerError(f"Invalid brick literal start at line {self.line}")
 
-
-    def scanBrickLiteral(self):
-
-        # brick literal rules:
-        # - Written inside single quotes: 'x'
-        # - Exactly one character OR one valid escape sequence.
-        # - No empty character: '' is invalid.
-        # - Valid escapes: \n, \t, \\, \', \", \0
-        # - Whitespace counts as a valid character.
-
-        if self.isAtEnd():
-            raise LexerError(f"Unterminated brick literal at line {self.line}")
-
-        ch = self.advanceChar()
-
-        # Empty character: '' not allowed
-        if ch == "'":
-            raise LexerError(f"Empty brick literal is not allowed at line {self.line}")
-
-        if not isAscii3(ch):
-            raise LexerError(f"brick literal must be printable ASCII (got {ch!r}) at line {self.line}")
-
-
-        # Escape sequence
-        if ch == '\\':
-            if self.isAtEnd():
-                raise LexerError(f"Incomplete escape in brick literal at line {self.line}")
-
-            esc = self.advanceChar()
-            validEscapes = {'n', 't', '\\', '\'', '"', '0'}
-            if esc not in validEscapes:
-                raise LexerError(f"Invalid escape '\\{esc}' in brick literal at line {self.line}")
-
-            if not self.matchChar("'"):
-                raise LexerError(f"brick literal must contain exactly one escape sequence at line {self.line}")
-        else:
-            # Normal character case: must be exactly one char, then closing quote
-            if ch == '\n':
-                raise LexerError(f"brick literal cannot contain newline at line {self.line}")
-
-            # printable ASCII only (codes 32–126)
-            if not isAscii3(ch):
+            elif state == 282:
+                if self.is_escape_seq_char(ch):
+                    self.advance()
+                    state = 283
+                    continue
                 raise LexerError(
-                    f"brick literal must be a printable ASCII character (got {ch!r}) at line {self.line}"
+                    f"Invalid escape sequence in brick literal at line {self.line}"
                 )
 
-            if not self.matchChar("'"):
-                raise LexerError(f"brick literal must contain exactly one character at line {self.line}")
+            elif state == 283:
+                if ch == "'":
+                    self.advance()
+                    state = 284
+                    continue
+                raise LexerError(f"Unterminated brick literal at line {self.line}")
 
+            elif state == 284:
+                # We ALWAYS emit the brick literal token (it's valid by itself)
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("brick_lit", lexeme, start_line, start_col))
 
-        lexeme = self.source[self.startIndex:self.currentIndex]
-        self.addToken("brick_lit", lexeme)
+                if self.is_delim23(ch):
+                    # good delimiter → just finish
+                    return
+                else:
+                    # bad delimiter → report error, BUT do not consume the char
+                    # so that the next DFA run can start from it
+                    self.add_error(
+                        "Invalid delimiter after brick literal",
+                        start_line=start_line,
+                        start_col=start_col,
+                    )
+                    return
 
+            # ===================================================
+            # Wall / string literal: "..."  286–288
+            # ===================================================
 
-    def scanIdentifier(self):
-        # First char consumed and is ASCII letter or '_'
-        while isAlphaNumChar(self.peekChar()) or self.peekChar() == '_':
-            self.advanceChar()
+            elif state == 286:
+                if ch == '"':
+                    # closing quote
+                    self.advance()
+                    state = 288
+                    continue
+                if ch == '\\':
+                    self.advance()
+                    state = 287
+                    continue
+                if self.is_ascii2(ch):
+                    # ascii content
+                    self.advance()
+                    continue
+                # newline / EOF / bad char → unterminated
+                raise LexerError(f"Unterminated wall literal at line {self.line}")
 
-        lexeme = self.source[self.startIndex:self.currentIndex]
-
-        # IDENTIFIER LENGTH PLACEHOLDER |Bravo|
-        # Max length 20
-        if len(lexeme) > 20:
-            raise LexerError(
-                f"Identifier '{lexeme}' exceeds maximum length (20 chars) at line {self.line}"
-            )
-
-        # Keywords vs identifiers
-        if lexeme in KEYWORDS:
-            self.addToken(lexeme, lexeme)
-        else:
-            tokenType = self.getIdTokenType(lexeme)
-            self.addToken(tokenType, lexeme)
-
-
-    def checkDelimiter(self, tokenType: str):
-
-        # After reading a token, ensure the next character belongs
-        # to the correct delimiter set for that tokenType.
-
-        ch = self.peekChar()
-
-        if ch == '\0':
-            return
-
-        # ------------- category "whitespace" -------------
-        if tokenType in whitespace:
-            if not isWhitespaceChar(ch):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
+            elif state == 287:
+                if self.is_escape_seq_char(ch):
+                    self.advance()
+                    state = 286
+                    continue
                 raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' at line {self.line}"
+                    f"Invalid escape sequence in wall literal at line {self.line}"
                 )
-            return
 
-        # ------------- category "alpha_id" (&, .) -------------
-        if tokenType in alpha_id:
-            if not isAlphaIdChar(ch):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' at line {self.line}. "
-                    "Expected an identifier start (letter or underscore)."
+            elif state == 288:
+                # We ALWAYS emit the wall literal token; the string itself is valid
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token("wall_lit", lexeme, start_line, start_col))
+
+                if self.is_delim24(ch):
+                    # good delimiter → done
+                    return
+                else:
+                    # bad delimiter → log error but DO NOT advance,
+                    # so the same char becomes the start of the next token.
+                    self.add_error(
+                        "Invalid delimiter after wall literal",
+                        start_line=start_line,
+                        start_col=start_col,
+                    )
+                    return
+
+
+            # ===================================================
+            # Comments: '//' and '/* ... */' 290, 292, 293, 295
+            # ===================================================
+
+            # single-line: //
+            elif state == 290:   # after '//'
+                # newline ends the comment
+                if ch == '\n':
+                    # comment is from start_pos up to (but not including) newline
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(
+                        Token("comment_single", lexeme, start_line, start_col)
+                    )
+                    self.advance()   # consume newline so next token sees the next line
+                    return
+
+                # EOF ends the comment too
+                if ch is None:
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(
+                        Token("comment_single", lexeme, start_line, start_col)
+                    )
+                    return
+
+                # ascii3: any other char on the line
+                self.advance()
+                continue
+
+
+            # Inside '/* ... */'
+            elif state == 292:   # comment body (ascii4 / λ)
+                # EOF: treat entire rest of file as part of the comment, then stop
+                if ch is None:
+                    # emit multi-line comment token up to EOF
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(
+                        Token("comment_multi", lexeme, start_line, start_col)
+                    )
+                    return   # matches your rule: everything until EOF is comment
+
+                if ch == '*':
+                    self.advance()
+                    state = 293   # possible end sequence
+                    continue
+
+                # any other char (including newline)
+                self.advance()
+                continue
+
+
+            elif state == 293:   # have seen at least one '*'
+                # EOF: still just “comment until end of file”
+                if ch is None:
+                    lexeme = self.source[start_pos:self.pos]
+                    self.tokens.append(
+                        Token("comment_multi", lexeme, start_line, start_col)
+                    )
+                    return
+
+                if ch == '/':
+                    # found closing */
+                    self.advance()
+                    state = 295
+                    continue
+
+                # ascii5: not '/', go back to body
+                self.advance()
+                state = 292
+                continue
+
+
+            elif state == 295:   # just finished '*/'
+                # comment token is from start_pos up to current pos (including */)
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(
+                    Token("comment_multi", lexeme, start_line, start_col)
                 )
-            return
+                # according to your TD, delim25 (ascii3 or whitespace) is checked
+                # by the next DFA run, so we just return here.
+                return
 
-        # ------------- newline for single-line comment -------------
-        if tokenType in newline:
-            # newline or EOF
-            if ch != '\n' and ch != '\0':
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Single-line comment must end at newline (found '{ch}') at line {self.line}"
-                )
-            return
+            
+            elif state == 100:
+                # consume any remaining identifier chars
+                if ch is not None and (ch.isalnum() or ch == '_'):
+                    self.advance()
+                    continue
 
-        # ------------- delim1: ( , whitespace -------------
-        if tokenType in delim1:
-            if not (ch == '(' or isWhitespaceChar(ch)):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' (expected '(' or whitespace) at line {self.line}"
-                )
-            return
+                # reached delimiter → emit identifier
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)  # id1, id2, ...
+                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                return
 
-        # ------------- delim2: ; , whitespace -------------
-        if tokenType in delim2:
-            if not (ch == ';' or isWhitespaceChar(ch)):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' (expected ';' or whitespace) at line {self.line}"
-                )
-            return
 
-        # ------------- delim3: { , whitespace -------------
-        if tokenType in delim3:
-            if not (ch == '{' or isWhitespaceChar(ch)):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' (expected '{{' or whitespace) at line {self.line}"
-                )
-            return
-
-        # ------------- delim4: operators , } , ) , ] , : , ; , , , whitespace -------------
-        if tokenType in delim4:
-            if not (
-                isOperatorChar(ch) or
-                ch in {'}', ')', ']', ':', ';', ','} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' (delim4) at line {self.line}"
-                )
-            return
-
-        # ------------- delim5: : , whitespace -------------
-        if tokenType in delim5:
-            if not (ch == ':' or isWhitespaceChar(ch)):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' (expected ':' or whitespace) at line {self.line}"
-                )
-            return
-
-        # ------------- delim6: alpha_num , + , - , ! , { , ( , ' , " , whitespace -------------
-        if tokenType in delim6:
-            if not (
-                isAlphaNumChar(ch) or
-                ch in {'+', '-', '!', '{', '(', '\'', '"'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '=' (delim6) at line {self.line}"
-                )
-            return
-
-        # ------------- delim7: alpha_num , + , - , ! , ( , ' , " , whitespace -------------
-        if tokenType in delim7:
-            if not (
-                isAlphaNumChar(ch) or
-                ch in {'+', '-', '!', '(', '\'', '"'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' (delim7) at line {self.line}"
-                )
-            return
-
-        # ------------- delim8: alpha_num , - , ! , ( , ' , " , whitespace -------------
-        if tokenType in delim8:
-            if not (
-                isAlphaNumChar(ch) or
-                ch in {'-', '!', '(', '\'', '"'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '+' (delim8) at line {self.line}"
-                )
-            return
-
-        # ------------- delim9: alpha_id , ) , ] , , , ; , whitespace -------------
-        if tokenType in delim9:
-            if not (
-                isAlphaIdChar(ch) or
-                ch in {')', ']', ',', ';'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' (delim9) at line {self.line}"
-                )
-            return
-
-        # ------------- delim10: alpha_num , + , - , ! , ' , whitespace -------------
-        if tokenType in delim10:
-            if not (
-                isAlphaNumChar(ch) or
-                ch in {'+', '-', '!', '\'', '(',} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' (delim10) at line {self.line}"
-                )
-            return
-
-        # ------------- delim11: alpha_id , + , ! , ( , ' , whitespace -------------
-        if tokenType in delim11:
-            if not (
-                isAlphaIdChar(ch) or
-                ch in {'+', '!', '(', '\'',} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '-' (delim11) at line {self.line}"
-                )
-            return
-
-        # ------------- delim12: alpha_num , - , { , ' , " , whitespace -------------
-        if tokenType in delim12:
-            if not (
-                isAlphaNumChar(ch) or
-                ch in {'-', '{', '\'', '"'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '{tokenType}' (delim12) at line {self.line}"
-                )
-            return
-
-        # ------------- delim13: alpha_id , } , ; , , , whitespace -------------
-        if tokenType in delim13:
-            if not (
-                isAlphaIdChar(ch) or
-                ch in {'}', ';', ','} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '}}' (delim13) at line {self.line}"
-                )
-            return
-
-        # ------------- delim14: alpha_num , - , + , ! , ( , ) , ' , " , whitespace -------------
-        if tokenType in delim14:
-            if not (
-                isAlphaNumChar(ch) or
-                ch in {'-', '+', '!', '(', ')', '\'', '"'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '(' (delim14) at line {self.line}"
-                )
-            return
-
-        # ------------- delim15: operators , { , ) , ] , ; , whitespace -------------
-        if tokenType in delim15:
-            if not (
-                isOperatorChar(ch) or
-                ch in {'{', ')', ']', ';'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after ')' (delim15) at line {self.line}"
-                )
-            return
-
-        # ------------- delim16: alpha_num , + , - , ! , ( , ] , ' , whitespace -------------
-        if tokenType in delim16:
-            if not (
-                isAlphaNumChar(ch) or
-                ch in {'+', '-', '!', '(', ']', '\'',} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after '[' (delim16) at line {self.line}"
-                )
-            return
-
-        # ------------- delim17: operators , ) , [ , ; , whitespace -------------
-        if tokenType in delim17:
-            if not (
-                isOperatorChar(ch) or
-                ch in {')', '[', ';'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after ']' (delim17) at line {self.line}"
-                )
-            return
-
-        # ------------- delim18: alpha_num , - , & , ' , " , whitespace -------------
-        if tokenType in delim18:
-            if not (
-                isAlphaNumChar(ch) or
-                ch in {'-', '&', '\'', '"'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after ',' (delim18) at line {self.line}"
-                )
-            return
-
-        # ------------- delim19: alpha_num , + , - , whitespace -------------
-        if tokenType in delim19:
-            if not (
-                isAlphaNumChar(ch) or
-                ch in {'+', '-'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after ';' (delim19) at line {self.line}"
-                )
-            return
-
-        # ------------- delim20: operators , ( , ) , [ , ] , . , , , ; , whitespace -------------
-        if tokenType in delim20:
-            if not (
-                isOperatorChar(ch) or
-                ch in {'(', ')', '[', ']', '.', ',', ';'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after identifier (delim20) at line {self.line}"
-                )
-            return
-
-        # ------------- delim21: operators , ) , ] , } , , , : , ; , whitespace -------------
-        if tokenType in delim21:
-            if not (
-                isOperatorChar(ch) or
-                ch in {')', ']', '}', ',', ':', ';'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after tile_lit (delim21) at line {self.line}"
-                )
-            return
-
-        # ------------- delim22: operators , ) , ] , } , , , ; , whitespace -------------
-        if tokenType in delim22:
-            if not (
-                isOperatorChar(ch) or
-                ch in {')', ']', '}', ',', ';'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after glass_lit (delim22) at line {self.line}"
-                )
-            return
-
-        # ------------- delim23: operators , ) , ] , } , , , : , ; , whitespace -------------
-        if tokenType in delim23:
-            if not (
-                isOperatorChar(ch) or
-                ch in {')', ']', '}', ',', ':', ';'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after brick_lit (delim23) at line {self.line}"
-                )
-            return
-
-        # ------------- delim24: + , > , < , = , ! , & , | , ) , , , ; , whitespace -------------
-        if tokenType in delim24:
-            if not (
-                ch in {'+', '>', '<', '=', '!', '&', '|', ')', ',', ';'} or
-                isWhitespaceChar(ch)
-            ):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column 
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after wall_lit (delim24) at line {self.line}"
-                )
-            return
-
-        # ------------- delim25: ascii3 , whitespace (multi-line comment) -------------
-        if tokenType in delim25:
-            if not (isAscii3(ch) or isWhitespaceChar(ch)):
-                self.errorStartLine = self.line
-                self.errorStartColumn = self.column
-                raise LexerError(
-                    f"Invalid delimiter '{ch}' after multi-line comment (delim25) at line {self.line}"
-                )
-            return
-
-        return
