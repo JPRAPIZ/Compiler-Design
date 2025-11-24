@@ -1,3 +1,4 @@
+
 from typing import List
 from tokens import Token, formatToken
 
@@ -104,6 +105,9 @@ class Lexer:
         self.errorStartLine = None
         self.errorStartColumn = None
 
+        # Pending token (for delimiter errors)
+        self.pendingToken = None
+
         self.idCounter = 0
         self.idMap = {}
 
@@ -131,10 +135,11 @@ class Lexer:
                 # Base length = chars consumed for this token
                 lexeme_len = max(1, self.currentIndex - self.startIndex)
 
+                # Some errors (like invalid delimiters) explicitly set an error start
                 if self.errorStartLine is not None:
                     start_line = self.errorStartLine
                     start_col  = self.errorStartColumn
-                    lexeme_len = 1 
+                    lexeme_len = 1
 
                 end_line = start_line
                 end_col  = start_col + lexeme_len
@@ -149,11 +154,18 @@ class Lexer:
                     "end_col": end_col,
                 })
 
+                # If a token was pending when the error occurred (e.g., delimiter error),
+                # still add it to the token list so it appears in the Tokens panel.
+                if self.pendingToken is not None:
+                    self.tokenList.append(self.pendingToken)
+                    self.pendingToken = None
+
         # EOF token
         eof_token = Token("$", "EOF", self.line, self.column)
         self.tokenList.append(eof_token)
 
         return self.tokenList
+
 
     def isAtEnd(self) -> bool:
         return self.currentIndex >= len(self.source)
@@ -190,15 +202,22 @@ class Lexer:
         return True
 
     def addToken(self, tokenType: str, lexeme: str | None = None):
-        if lexeme is None:
-            lexeme = self.source[self.startIndex:self.currentIndex]
+            if lexeme is None:
+                lexeme = self.source[self.startIndex:self.currentIndex]
 
-        line = self.tokenStartLine
-        col = self.tokenStartColumn
+            line = self.tokenStartLine
+            col = self.tokenStartColumn
 
-        tok = Token(tokenType, lexeme, line, col)
-        self.tokenList.append(tok)
-        self.checkDelimiter(tokenType)
+            # Store as pending in case delimiter validation fails
+            self.pendingToken = Token(tokenType, lexeme, line, col)
+
+            # This may raise a LexerError (e.g., invalid delimiter)
+            self.checkDelimiter(tokenType)
+
+            # If we reach here, delimiter is valid -> finalize the token
+            self.tokenList.append(self.pendingToken)
+            self.pendingToken = None
+
 
     def scanToken(self):
         ch = self.advanceChar()

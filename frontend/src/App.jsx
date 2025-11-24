@@ -26,98 +26,87 @@ home 0;
   const [markers, setMarkers] = useState([]);
   const [editor, setEditor] = useState(null);
 
+  // ✅ RESTORED: ranges derived from errors, for token highlighting
+  const errorRanges = errors.map(err => {
+    const sLine = err.start_line ?? err.line;
+    const sCol  = err.start_col  ?? err.col;
+    const eLine = err.end_line   ?? sLine;
+    const eCol  = err.end_col    ?? (sCol + 1);
 
-  const errorPositions = new Set(
-    errors.map((err) => {
-      const line = err.start_line ?? err.line;
-      const col  = err.start_col  ?? err.col;
-      return `${line}:${col}`;
-    })
-  );
+    return { sLine, sCol, eLine, eCol };
+  });
 
-  
+  const handleSubmit = async () => {
+    setIsLoading(true);
+    setTokens([]);
+    setErrors([]);
+    setAnnotations([]);
+    setMarkers([]);
 
+    try {
+      const response = await fetch('http://localhost:8000/lex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: code }),
+      });
 
-const handleSubmit = async () => {
-  setIsLoading(true);
-  setTokens([]);
-  setErrors([]);
-  setAnnotations([]);
-  setMarkers([]);
+      const data = await response.json();
 
-  try {
-    const response = await fetch('http://localhost:8000/lex', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: code }),
-    });
+      const newTokens = Array.isArray(data.tokens) ? data.tokens : [];
+      const newErrors = Array.isArray(data.errors) ? data.errors : [];
 
-    const data = await response.json();
+      setTokens(newTokens);
+      setErrors(newErrors);
 
-    const newTokens = Array.isArray(data.tokens) ? data.tokens : [];
-    const newErrors = Array.isArray(data.errors) ? data.errors : [];
+      // Annotations (gutter X + tooltip)
+      const anns = newErrors.map(err => ({
+        row: (err.line ?? err.start_line ?? 1) - 1,
+        column: (err.col ?? err.start_col ?? 1) - 1,
+        text: err.message,
+        type: "error",
+      }));
+      setAnnotations(anns);
 
-    setTokens(newTokens);
-    setErrors(newErrors);
+      // Markers (red highlight in code)
+      const markers = newErrors.map(err => {
+        const startRow = (err.start_line ?? err.line ?? 1) - 1;
+        const startCol = (err.start_col  ?? err.col  ?? 1) - 1;
+        const endRow   = (err.end_line   ?? err.line ?? 1) - 1;
+        const endCol   = (err.end_col    ?? err.col  ?? (startCol + 1)) - 1;
 
-    // Annotations (gutter X + tooltip)
-    const anns = newErrors.map(err => ({
-      row: (err.line ?? err.start_line ?? 1) - 1,
-      column: (err.col ?? err.start_col ?? 1) - 1,
-      text: err.message,
-      type: "error",
-    }));
-    setAnnotations(anns);
+        return {
+          startRow,
+          startCol,
+          endRow,
+          endCol,
+          className: "lexer-error-marker",
+          type: "text",
+        };
+      });
 
+      setMarkers(markers);
 
-    // Markers (red highlight in code)
-    // Ace markers (highlight from start_* to end_*)
-    const markers = newErrors.map(err => {
-      const startRow = (err.start_line ?? err.line ?? 1) - 1;
-      const startCol = (err.start_col  ?? err.col  ?? 1) - 1;
-      const endRow   = (err.end_line   ?? err.line ?? 1) - 1;
-      const endCol   = (err.end_col    ?? err.col  ?? (startCol + 1)) - 1;
+    } catch (error) {
+      setErrors([{
+        message: "Cannot connect to compiler backend. Is it running?",
+        line: 1,
+        col: 1,
+      }]);
+    }
 
-      return {
-        startRow,
-        startCol,
-        endRow,
-        endCol,
-        className: "lexer-error-marker",
-        type: "text",
-      };
-    });
+    setIsLoading(false);
+  };
 
-    setMarkers(markers);
+  const handleErrorClick = (err) => {
+    if (!editor) return;
 
+    const row = (err.start_line ?? err.line ?? 1) - 1;
+    const col = (err.start_col  ?? err.col  ?? 1) - 1;
 
-
-
-
-
-  } catch (error) {
-    setErrors([{
-      message: "Cannot connect to compiler backend. Is it running?",
-      line: 1,
-      col: 1,
-    }]);
-  }
-
-  setIsLoading(false);
-};
-
-
-    const handleErrorClick = (err) => {
-      if (!editor) return;
-
-      const row = (err.start_line ?? err.line ?? 1) - 1;
-      const col = (err.start_col  ?? err.col  ?? 1) - 1;
-
-      editor.focus();
-      editor.gotoLine(row + 1, col, true);      
-      editor.selection.moveTo(row, col);       
-    };
-
+    editor.focus();
+    editor.gotoLine(row + 1, col, true);
+    editor.selection.moveTo(row, col);
+  };
 
   return (
     <div className="min-h-screen font-sans bg-[#111] text-gray-300">
@@ -129,7 +118,6 @@ const handleSubmit = async () => {
             src={archLogo}
             alt="arCh Compiler"
             className="h-10 md:h-16 object-contain"
-            //size
           />
         </div>
 
@@ -173,14 +161,13 @@ const handleSubmit = async () => {
               showLineNumbers: true,
               tabSize: 5,
               useSoftTabs: false,
-              
             }}
             width="100%"
             height="100%"
             style={{ backgroundColor: '#0a0a0a' }}
             fontSize={22}
             annotations={annotations}
-            markers={markers} 
+            markers={markers}
           />
         </div>
 
@@ -209,7 +196,6 @@ const handleSubmit = async () => {
                 <span className="text-gray-500">No Lexical errors.</span>
               )}
             </div>
-
           </div>
 
           {/* Tokens */}
@@ -226,8 +212,32 @@ const handleSubmit = async () => {
                 </thead>
                 <tbody className="bg-[#0a0a0a]">
                   {tokens.map((t, idx) => {
-                    const posKey = `${t.line}:${t.column}`;
-                    const isErrorToken = errorPositions.has(posKey);
+                    const tokenStartLine = t.line;
+                    const tokenStartCol  = t.column;
+                    const tokenEndCol    = t.column + (t.lexeme?.length ?? 1);
+
+                    const isErrorToken = errors.some(err => {
+                      const sLine = err.start_line ?? err.line;
+                      const sCol  = err.start_col  ?? err.col;
+                      const eCol  = err.end_col    ?? (sCol + 1);
+
+                      if (sLine !== tokenStartLine) return false;
+
+                      const isDelimError = err.message?.startsWith("Invalid delimiter");
+
+                      if (isDelimError) {
+                        // Only mark the token whose delimiter is wrong:
+                        // its END column is exactly where the error starts.
+                        return tokenEndCol === sCol;
+                      }
+
+                      // For other errors (e.g. unterminated wall literal),
+                      // mark tokens whose chars overlap the error span.
+                      const overlaps =
+                        tokenStartCol < eCol && tokenEndCol > sCol;
+
+                      return overlaps;
+                    });
 
                     return (
                       <tr
@@ -277,7 +287,6 @@ const handleSubmit = async () => {
               </table>
             </div>
           </div>
-
 
         </div>
 
