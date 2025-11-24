@@ -214,7 +214,7 @@ home 0;
                   {tokens.map((t, idx) => {
                     const tokenStartLine = t.line;
                     const tokenStartCol  = t.column;
-                    const tokenEndCol    = t.column + (t.lexeme?.length ?? 1);
+                    const tokenEndCol    = tokenStartCol + (t.lexeme?.length ?? 1);
 
                     const isErrorToken = errors.some(err => {
                       const sLine = err.start_line ?? err.line;
@@ -226,13 +226,15 @@ home 0;
                       const isDelimError = err.message?.startsWith("Invalid delimiter");
 
                       if (isDelimError) {
-                        // Only mark the token whose delimiter is wrong:
-                        // its END column is exactly where the error starts.
+                        // delimiter errors belong to the *previous real token*,
+                        // never to newline/space/tab
+                        if (["newline", "space", "tab"].includes(t.tokenType)) {
+                          return false;
+                        }
                         return tokenEndCol === sCol;
                       }
 
-                      // For other errors (e.g. unterminated wall literal),
-                      // mark tokens whose chars overlap the error span.
+                      // other errors (e.g. unterminated wall literal) -> use overlap
                       const overlaps =
                         tokenStartCol < eCol && tokenEndCol > sCol;
 
@@ -283,6 +285,7 @@ home 0;
                     );
                   })}
                 </tbody>
+
 
               </table>
             </div>
