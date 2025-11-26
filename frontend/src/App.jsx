@@ -161,6 +161,9 @@ home 0;
               showLineNumbers: true,
               tabSize: 5,
               useSoftTabs: false,
+              highlightActiveLine: false,   // add this
+              highlightSelectedWord: false, // (optional) if you don’t want the word highlight either
+              
             }}
             width="100%"
             height="100%"
@@ -200,8 +203,14 @@ home 0;
 
           {/* Tokens */}
           <div className="flex flex-col border-t border-[#333]" style={{ height: '70%' }}>
-            <div className="flex-1 overflow-auto">
-              <table className="w-full text-sm text-gray-300">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
+              <table className="w-full text-sm text-gray-300 table-fixed">
+                <colgroup>
+                  <col className="w-1/2" />   {/* Lexeme */}
+                  <col className="w-1/4" />   {/* Token */}
+                  <col className="w-1/8" />   {/* Line */}
+                  <col className="w-1/8" />   {/* Col */}
+                </colgroup>
                 <thead className="sticky top-0 bg-[#222]">
                   <tr>
                     <th className="px-2 py-1 text-left font-semibold">Lexeme</th>
@@ -211,85 +220,28 @@ home 0;
                   </tr>
                 </thead>
                 <tbody className="bg-[#0a0a0a]">
-                  {tokens.map((t, idx) => {
-                    const tokenStartLine = t.line;
-                    const tokenStartCol  = t.column;
-                    const tokenEndCol    = tokenStartCol + (t.lexeme?.length ?? 1);
-
-                    const isErrorToken = errors.some(err => {
-                      const sLine = err.start_line ?? err.line;
-                      const sCol  = err.start_col  ?? err.col;
-                      const eCol  = err.end_col    ?? (sCol + 1);
-
-                      if (sLine !== tokenStartLine) return false;
-
-                      const isDelimError = err.message?.startsWith("Invalid delimiter");
-
-                      if (isDelimError) {
-                        // delimiter errors belong to the *previous real token*,
-                        // never to newline/space/tab
-                        if (["newline", "space", "tab"].includes(t.tokenType)) {
-                          return false;
-                        }
-                        return tokenEndCol === sCol;
-                      }
-
-                      // other errors (e.g. unterminated wall literal) -> use overlap
-                      const overlaps =
-                        tokenStartCol < eCol && tokenEndCol > sCol;
-
-                      return overlaps;
-                    });
-
-                    return (
-                      <tr
-                        key={idx}
-                        className={
-                          "border-t border-[#333] hover:bg-[#1a1a1a]" +
-                          (isErrorToken ? " bg-red-900/40" : "")
-                        }
-                      >
-                        <td
-                          className={
-                            "px-3 py-1 text-lg font-mono whitespace-pre-wrap break-words " +
-                            (isErrorToken ? "text-red-300" : "text-gray-100")
-                          }
-                        >
-                          {t.lexeme}
-                        </td>
-                        <td
-                          className={
-                            "px-2 py-1 text-lg font-mono whitespace-nowrap " +
-                            (isErrorToken ? "text-red-300" : "text-gray-100")
-                          }
-                        >
-                          {t.tokenType}
-                        </td>
-                        <td
-                          className={
-                            "px-2 py-1 text-lg whitespace-nowrap " +
-                            (isErrorToken ? "text-red-300" : "")
-                          }
-                        >
-                          {t.line}
-                        </td>
-                        <td
-                          className={
-                            "px-2 py-1 text-lg whitespace-nowrap " +
-                            (isErrorToken ? "text-red-300" : "")
-                          }
-                        >
-                          {t.column}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {tokens.map((t, idx) => (
+                    <tr key={idx} className="border-t border-[#333] hover:bg-[#1a1a1a]">
+                      <td className="px-3 py-1 text-sm md:text-base font-mono break-words whitespace-pre-wrap text-gray-100">
+                        {t.lexeme}
+                      </td>
+                      <td className="px-2 py-1 text-sm md:text-base font-mono whitespace-nowrap text-gray-100">
+                        {t.tokenType}
+                      </td>
+                      <td className="px-2 py-1 text-sm md:text-base whitespace-nowrap text-gray-400">
+                        {t.line}
+                      </td>
+                      <td className="px-2 py-1 text-sm md:text-base whitespace-nowrap text-gray-400">
+                        {t.column}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
-
-
               </table>
             </div>
           </div>
+
+
 
         </div>
 
