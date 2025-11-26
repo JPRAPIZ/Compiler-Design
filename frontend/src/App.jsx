@@ -216,8 +216,14 @@ const handleSubmit = async () => {
 
           {/* Tokens */}
           <div className="flex flex-col border-t border-[#333]" style={{ height: '70%' }}>
-            <div className="flex-1 overflow-auto">
-              <table className="w-full text-sm text-gray-300">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
+              <table className="w-full text-sm text-gray-300 table-fixed">
+                <colgroup>
+                  <col className="w-1/2" />   {/* Lexeme */}
+                  <col className="w-1/4" />   {/* Token */}
+                  <col className="w-1/8" />   {/* Line */}
+                  <col className="w-1/8" />   {/* Col */}
+                </colgroup>
                 <thead className="sticky top-0 bg-[#222]">
                   <tr>
                     <th className="px-2 py-1 text-left font-semibold">Lexeme</th>
@@ -227,58 +233,27 @@ const handleSubmit = async () => {
                   </tr>
                 </thead>
                 <tbody className="bg-[#0a0a0a]">
-                  {tokens.map((t, idx) => {
-                    const posKey = `${t.line}:${t.column}`;
-                    const isErrorToken = errorPositions.has(posKey);
-
-                    return (
-                      <tr
-                        key={idx}
-                        className={
-                          "border-t border-[#333] hover:bg-[#1a1a1a]" +
-                          (isErrorToken ? " bg-red-900/40" : "")
-                        }
-                      >
-                        <td
-                          className={
-                            "px-3 py-1 text-lg font-mono whitespace-pre-wrap break-words " +
-                            (isErrorToken ? "text-red-300" : "text-gray-100")
-                          }
-                        >
-                          {t.lexeme}
-                        </td>
-                        <td
-                          className={
-                            "px-2 py-1 text-lg font-mono whitespace-nowrap " +
-                            (isErrorToken ? "text-red-300" : "text-gray-100")
-                          }
-                        >
-                          {t.tokenType}
-                        </td>
-                        <td
-                          className={
-                            "px-2 py-1 text-lg whitespace-nowrap " +
-                            (isErrorToken ? "text-red-300" : "")
-                          }
-                        >
-                          {t.line}
-                        </td>
-                        <td
-                          className={
-                            "px-2 py-1 text-lg whitespace-nowrap " +
-                            (isErrorToken ? "text-red-300" : "")
-                          }
-                        >
-                          {t.column}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {tokens.map((t, idx) => (
+                    <tr key={idx} className="border-t border-[#333] hover:bg-[#1a1a1a]">
+                      <td className="px-3 py-1 text-sm md:text-base font-mono break-words whitespace-pre-wrap text-gray-100">
+                        {t.lexeme}
+                      </td>
+                      <td className="px-2 py-1 text-sm md:text-base font-mono whitespace-nowrap text-gray-100">
+                        {t.tokenType}
+                      </td>
+                      <td className="px-2 py-1 text-sm md:text-base whitespace-nowrap text-gray-400">
+                        {t.line}
+                      </td>
+                      <td className="px-2 py-1 text-sm md:text-base whitespace-nowrap text-gray-400">
+                        {t.column}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
-
               </table>
             </div>
           </div>
+
 
 
         </div>
