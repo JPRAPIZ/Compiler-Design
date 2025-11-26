@@ -7,8 +7,23 @@ from tokens import Token
 #   FIX ORDER OF RETURN LEXEME FIRST THEN TOKENS (CONSISTENCY)
 #   
 
+# numbers { 0 , 1 , 2 , 3 , 4 , 5 , 6 , 7 , 8 , 9 }
+numbers = {
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+}
+
+# alpha { a..z, A..Z }
+alpha = {
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+    'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+    'u', 'v', 'w', 'x', 'y', 'z',
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+    'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+    'U', 'V', 'W', 'X', 'Y', 'Z',
+}
+
 # ascii1: code 32 to 126 excluding '\' and "'"
-ASCII1_CHARS = {
+ascii1 = {
     ' ', '!', '"', '#', '$', '%', '&', '(',
     ')', '*', '+', ',', '-', '.', '/', '0',
     '1', '2', '3', '4', '5', '6', '7', '8',
@@ -24,7 +39,7 @@ ASCII1_CHARS = {
 }
 
 # ascii2: code 32 to 126 excluding '\' and '"'
-ASCII2_CHARS = {
+ascii2 = {
     ' ', '!', '#', '$', '%', '&', "'", '(',
     ')', '*', '+', ',', '-', '.', '/', '0',
     '1', '2', '3', '4', '5', '6', '7', '8',
@@ -40,7 +55,7 @@ ASCII2_CHARS = {
 }
 
 # ascii3: full printable ASCII 32–126
-ASCII3_CHARS = {
+ascii3 = {
     ' ', '!', '"', '#', '$', '%', '&', "'",
     '(', ')', '*', '+', ',', '-', '.', '/',
     '0', '1', '2', '3', '4', '5', '6', '7',
@@ -55,26 +70,10 @@ ASCII3_CHARS = {
     'x', 'y', 'z', '{', '|', '}', '~',
 }
 
-# ascii4: code 32–126 excluding '*'
-ASCII4_CHARS = {
-    ' ', '!', '"', '#', '$', '%', '&', "'",
+# ascii4: code 33-126 excluding ' ' space
+ascii4 = {
+    '!', '"', '#', '$', '%', '&', "'", '*',
     '(', ')', '+', ',', '-', '.', '/', '0',
-    '1', '2', '3', '4', '5', '6', '7', '8',
-    '9', ':', ';', '<', '=', '>', '?', '@',
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-    'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-    'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', '[', '\\', ']', '^', '_', '`',
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
-    'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p',
-    'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
-    'y', 'z', '{', '|', '}', '~',
-}
-
-# ascii5: code 32–126 excluding '/'
-ASCII5_CHARS = {
-    ' ', '!', '"', '#', '$', '%', '&', "'",
-    '(', ')', '*', '+', ',', '-', '.', '0',
     '1', '2', '3', '4', '5', '6', '7', '8',
     '9', ':', ';', '<', '=', '>', '?', '@',
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
@@ -110,18 +109,6 @@ class Lexer:
         # ID counter + map: lexeme -> index
         self.id_table: dict[str, int] = {}
         self.next_id_index: int = 1
-
-    # def add_error(self, message: str, *, start_line=None, start_col=None):
-    #     """Record an error at the current position without raising."""
-    #     self.errors.append({
-    #         "message": message,
-    #         "line": self.line,
-    #         "col": self.column,
-    #         "start_line": start_line if start_line is not None else self.line,
-    #         "start_col": start_col if start_col is not None else self.column,
-    #         "end_line": self.line,
-    #         "end_col": self.column,
-    #     })
 
     def add_error(self, message: str, *, start_line=None, start_col=None):
 
@@ -186,43 +173,48 @@ class Lexer:
         return ch is None
 
     def is_number(self, ch) -> bool:
-        return ch is not None and ch.isdigit()
+        # numbers { 0 , 1 , 2 , 3 , 4 , 5 , 6 , 7 , 8 , 9 }
+        return ch in numbers
+
+    def is_alpha(self, ch) -> bool:
+        # alpha { a..z, A..Z }
+        return ch in alpha
 
     def is_alpha_id(self, ch) -> bool:
-        return ch is not None and (ch.isalpha() or ch == '_')
+        # alpha_id { alpha , _ }
+        return self.is_alpha(ch) or ch == '_'
 
     def is_alpha_num(self, ch) -> bool:
+        # alpha_num { numbers , alpha_id }
         return self.is_number(ch) or self.is_alpha_id(ch)
 
     def is_whitespace(self, ch) -> bool:
         return ch in (' ', '\t', '\n')
 
+    def is_newline(self, ch) -> bool:
+        return ch == '\n'
+
     def is_operator_char(self, ch) -> bool:
         return ch in "+-*/%<>=!&|"
 
-    def is_ascii_range(self, ch, lo: int, hi: int) -> bool:
-        return ch is not None and lo <= ord(ch) <= hi
+    # def is_ascii_range(self, ch, lo: int, hi: int) -> bool:
+    #     return ch is not None and lo <= ord(ch) <= hi
 
     def is_ascii1(self, ch) -> bool:
         # ascii code 32 to 126 excluding \ and '
-        return ch is not None and ch in ASCII1_CHARS
+        return ch is not None and ch in ascii1
 
     def is_ascii2(self, ch) -> bool:
         # ascii code 32 to 126 excluding \ and "
-        return ch is not None and ch in ASCII2_CHARS
+        return ch is not None and ch in ascii2
 
     def is_ascii3(self, ch) -> bool:
         # ascii code 32 to 126
-        return ch is not None and ch in ASCII3_CHARS
+        return ch is not None and ch in ascii3
 
     def is_ascii4(self, ch) -> bool:
         # ascii code 32 to 126 excluding *
-        return ch is not None and ch in ASCII4_CHARS
-
-    def is_ascii5(self, ch) -> bool:
-        # ascii code 32 to 126 excluding /
-        return ch is not None and ch in ASCII5_CHARS
-
+        return ch is not None and ch in ascii4
 
     def is_escape_seq_char(self, ch) -> bool:
         # { n , t , ' , " , \ , 0 }
@@ -233,19 +225,19 @@ class Lexer:
     # ============================================================
 
     def is_delim1(self, ch) -> bool:
-        # { ( , whitespace }
+        # delim1 { ( , whitespace }
         return self.is_eof(ch) or ch == '(' or self.is_whitespace(ch)
 
     def is_delim2(self, ch) -> bool:
-        # { ; , whitespace }
+        # delim2 { ; , whitespace }
         return self.is_eof(ch) or ch == ';' or self.is_whitespace(ch)
 
     def is_delim3(self, ch) -> bool:
-        # { { , whitespace }
+        # delim3 { { , whitespace }
         return self.is_eof(ch) or ch == '{' or self.is_whitespace(ch)
 
     def is_delim4(self, ch) -> bool:
-        # { operators , } , ) , ] , : , ; , , ,  whitespace }
+        # delim4 { operators , } , ) , ] , : , ; , , ,  whitespace }
         return (
             self.is_eof(ch)
             or self.is_operator_char(ch)
@@ -254,11 +246,11 @@ class Lexer:
         )
 
     def is_delim5(self, ch) -> bool:
-        # { : , whitespace }
+        # delim5 { : , whitespace }
         return self.is_eof(ch) or ch == ':' or self.is_whitespace(ch)
 
     def is_delim6(self, ch) -> bool:
-        # { alpha_num , + , - , ! , { , ( , ' , " , whitespace }
+        # delim6 { alpha_num , + , - , ! , { , ( , ' , " , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
@@ -267,7 +259,7 @@ class Lexer:
         )
 
     def is_delim7(self, ch) -> bool:
-        # { alpha_num , + , - , ! , ( , ' , " ,  whitespace }
+        # delim7 { alpha_num , + , - , ! , ( , ' , " ,  whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
@@ -276,7 +268,7 @@ class Lexer:
         )
 
     def is_delim8(self, ch) -> bool:
-        # { alpha_num , - , ! , ( , ' , " , whitespace }
+        # delim8 { alpha_num , - , ! , ( , ' , " , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
@@ -285,7 +277,7 @@ class Lexer:
         )
 
     def is_delim9(self, ch) -> bool:
-        # { alpha_id , ) , ] , , , ; , whitespace }
+        # delim9 { alpha_id , ) , ] , , , ; , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_id(ch)
@@ -294,7 +286,7 @@ class Lexer:
         )
 
     def is_delim10(self, ch) -> bool:
-        # { alpha_num , + , - , ! , ' , ( , whitespace }
+        # delim10 { alpha_num , + , - , ! , ' , ( , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
@@ -303,7 +295,7 @@ class Lexer:
         )
 
     def is_delim11(self, ch) -> bool:
-        # { alpha_id , + , ! , ( , ' , whitespace }
+        # delim11 { alpha_id , + , ! , ( , ' , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_id(ch)
@@ -312,16 +304,17 @@ class Lexer:
         )
 
     def is_delim12(self, ch) -> bool:
-        # { alpha_num , - , { , ' , " , whitespace }
+        # delim12 { alpha , numbers , - , { , ' , " , whitespace }
         return (
             self.is_eof(ch)
-            or self.is_alpha_num(ch)
+            or (ch is not None and ch.isalpha())  # alpha
+            or self.is_number(ch)                 # numbers
             or ch in ('-', '{', "'", '"')
             or self.is_whitespace(ch)
         )
 
     def is_delim13(self, ch) -> bool:
-        # { alpha_id, } , ; , , , whitespace }
+        # delim13 { alpha_id, } , ; , , , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_id(ch)
@@ -330,7 +323,7 @@ class Lexer:
         )
 
     def is_delim14(self, ch) -> bool:
-        # { alpha_num , - , + , ! , ( , ) , ' , " , whitespace }
+        # delim14 { alpha_num , - , + , ! , ( , ) , ' , " , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
@@ -339,7 +332,7 @@ class Lexer:
         )
 
     def is_delim15(self, ch) -> bool:
-        # { operators , { , ) , ] , ; , whitespace }
+        # delim15 { operators , { , ) , ] , ; , whitespace }
         return (
             self.is_eof(ch)
             or self.is_operator_char(ch)
@@ -348,16 +341,16 @@ class Lexer:
         )
 
     def is_delim16(self, ch) -> bool:
-        # { alpha_num , + , - , ! , ( , ] , ' , whitespace }
+        # delim16 { alpha_num , + , - , ! , ( , ] , ' , " , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
-            or ch in ('+', '-', '!', '(', ']', "'")
+            or ch in ('+', '-', '!', '(', ']', "'", '"')
             or self.is_whitespace(ch)
         )
 
     def is_delim17(self, ch) -> bool:
-        # { operators , ) , [ , ; , whitespace }
+        # delim17 { operators , ) , [ , ; , whitespace }
         return (
             self.is_eof(ch)
             or self.is_operator_char(ch)
@@ -366,7 +359,7 @@ class Lexer:
         )
 
     def is_delim18(self, ch) -> bool:
-        # { alpha_num , - , & , ' , " , whitespace }
+        # delim18 { alpha_num , - , & , ' , " , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
@@ -375,7 +368,7 @@ class Lexer:
         )
 
     def is_delim19(self, ch) -> bool:
-        # { alpha_num , + , - , whitespace }
+        # delim19 { alpha_num , + , - , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
@@ -384,7 +377,7 @@ class Lexer:
         )
 
     def is_delim20(self, ch) -> bool:
-        # { operators , ( , ) , [ , ] , . , , , ; , whitespace }
+        # delim20 { operators , ( , ) , [ , ] , . , , , ; , whitespace }
         return (
             self.is_eof(ch)
             or self.is_operator_char(ch)
@@ -393,7 +386,7 @@ class Lexer:
         )
 
     def is_delim21(self, ch) -> bool:
-        # { operators, ) , ] , } , , , : , ; , whitespace }
+        # delim21 { operators , ) , ] , } , , , : , ; , whitespace }
         return (
             self.is_eof(ch)
             or self.is_operator_char(ch)
@@ -402,7 +395,7 @@ class Lexer:
         )
 
     def is_delim22(self, ch) -> bool:
-        # { operators, ) , ] , } , , , ; , whitespace }
+        # delim22 { operators, ) , ] , } , , , ; , whitespace }
         return (
             self.is_eof(ch)
             or self.is_operator_char(ch)
@@ -411,27 +404,12 @@ class Lexer:
         )
 
     def is_delim23(self, ch) -> bool:
-        # { operators , ) , ] , } , , , : , ; , whitespace }
+        # delim23 { + , > , < , = , ! , & , | , ) , ] , , , ; , whitespace }
         return (
             self.is_eof(ch)
-            or self.is_operator_char(ch)
-            or ch in (')', ']', '}', ',', ':', ';')
+            or ch in ('+', '>', '<', '=', '!', '&', '|', ')', ']', ',', ';')
             or self.is_whitespace(ch)
         )
-
-    def is_delim24(self, ch) -> bool:
-        # { + , > , < , = , ! , & , | , ) , , , ; , whitespace }
-        return (
-            self.is_eof(ch)
-            or ch in ('+', '>', '<', '=', '!', '&', '|', ')', ',', ';')
-            or self.is_whitespace(ch)
-        )
-
-    def is_delim25(self, ch) -> bool:
-        # { ascii3 , whitespace }
-        if self.is_eof(ch):
-            return True
-        return self.is_ascii3(ch) or self.is_whitespace(ch)
 
     # ============================================================
     # Public API
@@ -3536,7 +3514,7 @@ class Lexer:
 
             elif state == 288:
                 lexeme = self.source[start_pos:self.pos]
-                if self.is_delim24(ch):
+                if self.is_delim23(ch):
                     self.tokens.append(Token("wall_lit", lexeme, start_line, start_col))
                     return
 
@@ -3553,29 +3531,33 @@ class Lexer:
 
             # single-line: //
             elif state == 290:
-                if ch is None or ch == '\n':
+                # after seeing '//' – inside single-line comment body
+                ch = self.current
+
+                # λ (EOF) OR newline ends the comment → go to FINAL STATE 291
+                if ch is None or self.is_newline(ch):
                     state = 291
                     continue
 
-                # ascii3 / tab: any other char on this line
+                # ascii3 / tab / any other char on this line → stay in 290
                 self.advance()
                 continue
 
             elif state == 291:
+                # FINAL state for single-line comment
+                # comment text is from start_pos up to (but not including) newline/EOF
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(
                     Token("Single-Line Comment", lexeme, start_line, start_col)
                 )
 
+                # If we ended on a newline, consume it so next token starts on next line
                 if self.current == '\n':
                     self.advance()
 
                 return
 
-
-
             elif state == 292:
-
                 if ch is None:
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
@@ -3589,30 +3571,6 @@ class Lexer:
 
                 self.advance()
                 continue
-
-
-
-            # # Inside '/* ... */'
-            # elif state == 292:   # comment body (ascii4 / λ)
-            #     # EOF: treat entire rest of file as part of the comment, then stop
-            #     if ch is None:
-            #         # emit multi-line comment token up to EOF
-            #         lexeme = self.source[start_pos:self.pos]
-            #         self.tokens.append(
-            #             Token("comment_multi", lexeme, start_line, start_col)
-            #         )
-            #         return   # matches your rule: everything until EOF is comment
-
-            #     if ch == '*':
-            #         self.advance()
-            #         state = 293   # possible end sequence
-            #         continue
-
-            #     # any other char (including newline)
-            #     self.advance()
-            #     continue
-
-
 
             elif state == 293:
                 if ch is None:
@@ -3636,28 +3594,6 @@ class Lexer:
                 continue
 
 
-
-            # elif state == 293:   # have seen at least one '*'
-            #     # EOF: still just “comment until end of file”
-            #     if ch is None:
-            #         lexeme = self.source[start_pos:self.pos]
-            #         self.tokens.append(
-            #             Token("comment_multi", lexeme, start_line, start_col)
-            #         )
-            #         return
-
-            #     if ch == '/':
-            #         # found closing */
-            #         self.advance()
-            #         state = 295
-            #         continue
-
-            #     # ascii5: not '/', go back to body
-            #     self.advance()
-            #     state = 292
-            #     continue
-
-
             elif state == 294:
                 if ch is None or self.is_whitespace(ch):
                     state = 295
@@ -3667,17 +3603,6 @@ class Lexer:
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme (invalid delimiter after multi-line comment)"
                 )
-
-
-            # elif state == 295:   # just finished '*/'
-            #     # comment token is from start_pos up to current pos (including */)
-            #     lexeme = self.source[start_pos:self.pos]
-            #     self.tokens.append(
-            #         Token("comment_multi", lexeme, start_line, start_col)
-            #     )
-            #     # according to your TD, delim25 (ascii3 or whitespace) is checked
-            #     # by the next DFA run, so we just return here.
-            #     return
 
             elif state == 295:
                 lexeme = self.source[start_pos:self.pos]
