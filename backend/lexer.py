@@ -445,23 +445,17 @@ class Lexer:
             self.token_start_col = self.column
 
             try:
-                # one DFA run per token/comment/whitespace
+
                 self.lex_from_state0()
 
             except LexerError as e:
-                # 1) store the error
+
                 self.add_error(
                     str(e),
                     start_line=self.token_start_line,
                     start_col=self.token_start_col,
                 )
 
-                # 2) recovery:
-                #    - if DFA never advanced (pos == token_start_pos),
-                #      skip one char to avoid infinite loop
-                #    - if DFA already advanced (pos > token_start_pos),
-                #      DO NOT advance here, so the current char
-                #      can start the next token (like 'a' in "1asa").
                 if self.current is not None and self.pos == self.token_start_pos:
                     self.advance()
 
@@ -515,7 +509,6 @@ class Lexer:
                     state = 195   # newline
                     continue
 
-                # --- keywords by first letter ---
                 if ch == 'b':
                     self.advance()
                     state = 1
@@ -709,7 +702,7 @@ class Lexer:
                     state = 286
                     continue
 
-                # --- identifiers (generic) ---
+                # --- identifiers ---
                 if self.is_alpha_id(ch):
                     self.advance()
                     state = 196
@@ -759,30 +752,20 @@ class Lexer:
                 continue
 
             elif state == 4:
-                # We have just read 'beam' (b-e-a-m)
-
-                # 1) If next char is whitespace → 'beam' keyword (valid)
-                #    Go to FINAL STATE 5.
                 if self.is_whitespace(ch):
                     state = 5
                     continue
 
-                # 2) If next char is alphanumeric → this is actually an identifier like "beamX"
-                #    Fall back to the generic identifier DFA.
                 if self.is_alpha_num(ch):
                     state = 196
                     continue
 
-                # 3) Otherwise → 'beam' followed by any other char (., (, etc)
-                #    is an invalid lexeme, because beam's delimiter is *only* whitespace.
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 5:
-                # FINAL STATE for 'beam'
-                # We don't consume any more characters here; we just emit the token.
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("beam", lexeme, start_line, start_col))
                 return
@@ -845,12 +828,12 @@ class Lexer:
                 continue
 
             elif state == 13:
-                if self.is_delim1(ch):       # keyword's delimiter
-                    state = 14               # FINAL STATE
+                if self.is_delim1(ch):
+                    state = 14
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196              # becomes identifier (blueprintX)
+                    state = 196
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1976,70 +1959,61 @@ class Lexer:
             elif state == 130:
                 if ch == '+':
                     self.advance()
-                    state = 132    # saw "++"
+                    state = 132
                     continue
                 if ch == '=':
                     self.advance()
-                    state = 134    # saw "+="
+                    state = 134
                     continue
                 if self.is_delim8(ch):
-                    state = 131    # FINAL '+'
+                    state = 131
                     continue
 
-                # wrong delimiter after '+'
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 131:
-                # FINAL STATE for '+'
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("+", lexeme, start_line, start_col))
                 return
 
             elif state == 132:
-                # we've read "++"
                 if self.is_delim9(ch):
-                    state = 133    # FINAL "++"
+                    state = 133
                     continue
 
-                # wrong delimiter after "++"
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 133:
-                # FINAL STATE for "++"
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("++", lexeme, start_line, start_col))
                 return
 
             elif state == 134:
-                # we've read "+="
                 if self.is_delim10(ch):
-                    state = 135    # FINAL "+="
+                    state = 135
                     continue
 
-                # wrong delimiter after "+="
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 135:
-                # FINAL STATE for "+="
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("+=", lexeme, start_line, start_col))
                 return
 
             # '-', '--', '-=' (and negative numbers)
             elif state == 136:
-                # 1) negative number: "-<digit...>"
                 if self.is_number(ch):
                     self.advance()
-                    state = 236      # enter number DFA starting from '-'
+                    state = 236
                     continue
 
                 # 2) "--"
@@ -2056,46 +2030,39 @@ class Lexer:
 
                 # 4) single '-'
                 if self.is_delim11(ch):
-                    state = 137      # FINAL '-'
+                    state = 137
                     continue
 
-                # 5) wrong delimiter after '-'
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 137:
-                # FINAL STATE for '-'
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("-", lexeme, start_line, start_col))
                 return
 
             elif state == 138:
-                # we've read "--"
                 if self.is_delim9(ch):
-                    state = 139      # FINAL "--"
+                    state = 139
                     continue
 
-                # wrong delimiter after "--"
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 139:
-                # FINAL STATE for "--"
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("--", lexeme, start_line, start_col))
                 return
 
             elif state == 140:
-                # we've read "-="
                 if self.is_delim10(ch):
-                    state = 141      # FINAL "-="
+                    state = 141
                     continue
 
-                # wrong delimiter after "-="
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
@@ -2111,46 +2078,40 @@ class Lexer:
             elif state == 142:
                 if ch == '=':
                     self.advance()
-                    state = 144      # saw "*="
+                    state = 144
                     continue
 
                 if self.is_delim10(ch):
-                    state = 143      # FINAL '*'
+                    state = 143
                     continue
 
-                # wrong delimiter after '*'
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 143:
-                # FINAL STATE for '*'
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("*", lexeme, start_line, start_col))
                 return
 
             elif state == 144:
-                # we've read "*="
                 if self.is_delim10(ch):
-                    state = 145      # FINAL "*="
+                    state = 145
                     continue
 
-                # wrong delimiter after "*="
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 145:
-                # FINAL STATE for "*="
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("*=", lexeme, start_line, start_col))
                 return
 
             # '/', '/=', '//' and '/* ... */'
             elif state == 146:
-                # comments take precedence
                 if ch == '/':
                     self.advance()
                     state = 290      # line comment "///..." or "//"
@@ -2165,35 +2126,30 @@ class Lexer:
                     continue
 
                 if self.is_delim10(ch):
-                    state = 147      # FINAL '/'
+                    state = 147
                     continue
 
-                # wrong delimiter after '/'
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 147:
-                # FINAL STATE for '/'
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("/", lexeme, start_line, start_col))
                 return
 
             elif state == 148:
-                # we've read "/="
                 if self.is_delim10(ch):
-                    state = 149      # FINAL "/="
+                    state = 149
                     continue
 
-                # wrong delimiter after "/="
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 149:
-                # FINAL STATE for "/="
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("/=", lexeme, start_line, start_col))
                 return
@@ -2202,39 +2158,33 @@ class Lexer:
             elif state == 150:
                 if ch == '=':
                     self.advance()
-                    state = 152      # "%="
-                    continue
+                    state = 152
 
                 if self.is_delim10(ch):
-                    state = 151      # FINAL '%'
+                    state = 151
                     continue
 
-                # wrong delimiter after '%'
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 151:
-                # FINAL STATE for '%'
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("%", lexeme, start_line, start_col))
                 return
 
             elif state == 152:
-                # we've read "%="
                 if self.is_delim10(ch):
-                    state = 153      # FINAL "%="
+                    state = 153
                     continue
 
-                # wrong delimiter after "%="
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 153:
-                # FINAL STATE for "%="
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("%=", lexeme, start_line, start_col))
                 return
@@ -2243,39 +2193,34 @@ class Lexer:
             elif state == 154:
                 if ch == '=':
                     self.advance()
-                    state = 156      # ">="
+                    state = 156
                     continue
 
                 if self.is_delim7(ch):
-                    state = 155      # FINAL '>'
+                    state = 155
                     continue
 
-                # wrong delimiter after '>'
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 155:
-                # FINAL STATE for '>'
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token(">", lexeme, start_line, start_col))
                 return
 
             elif state == 156:
-                # we've read ">="
                 if self.is_delim7(ch):
-                    state = 157      # FINAL ">="
+                    state = 157
                     continue
 
-                # wrong delimiter after ">="
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 157:
-                # FINAL STATE for ">="
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token(">=", lexeme, start_line, start_col))
                 return
@@ -2284,39 +2229,34 @@ class Lexer:
             elif state == 158:
                 if ch == '=':
                     self.advance()
-                    state = 160      # "<="
+                    state = 160
                     continue
 
                 if self.is_delim7(ch):
-                    state = 159      # FINAL '<'
+                    state = 159
                     continue
 
-                # wrong delimiter after '<'
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 159:
-                # FINAL STATE for '<'
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("<", lexeme, start_line, start_col))
                 return
 
             elif state == 160:
-                # we've read "<="
                 if self.is_delim7(ch):
-                    state = 161      # FINAL "<="
+                    state = 161
                     continue
 
-                # wrong delimiter after "<="
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
 
             elif state == 161:
-                # FINAL STATE for "<="
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token("<=", lexeme, start_line, start_col))
                 return
@@ -2330,7 +2270,7 @@ class Lexer:
             elif state == 162:
                 if ch == '=':
                     self.advance()
-                    state = 164  # saw '!='
+                    state = 164
                     continue
                 if self.is_delim7(ch):
                     state = 163
@@ -2363,10 +2303,10 @@ class Lexer:
             elif state == 166:
                 if ch == '&':
                     self.advance()
-                    state = 168  # candidate '&&'
+                    state = 168
                     continue
                 if self.is_alpha_id(ch):
-                    state = 167  # single '&' before identifier
+                    state = 167
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
@@ -3546,13 +3486,11 @@ class Lexer:
 
 
             elif state == 284:
-                # Finished reading the brick literal candidate (including closing quote).
                 lexeme = self.source[start_pos:self.pos]
-                # TD rule: check the delimiter *before* committing the token.
                 if self.is_delim23(ch):
                     self.tokens.append(Token("brick_lit", lexeme, start_line, start_col))
                     return
-                # Invalid delimiter → whole lexeme is a lexical error, no token emitted.
+
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
@@ -3597,14 +3535,11 @@ class Lexer:
 
 
             elif state == 288:
-                # Finished reading the wall literal candidate (including closing quote).
                 lexeme = self.source[start_pos:self.pos]
-                # TD rule: check the delimiter *before* committing the token.
                 if self.is_delim24(ch):
-                    # Valid delimiter → emit wall literal token.
                     self.tokens.append(Token("wall_lit", lexeme, start_line, start_col))
                     return
-                # Invalid delimiter → whole lexeme is a lexical error, no token emitted.
+
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
@@ -3617,9 +3552,7 @@ class Lexer:
             # ===================================================
 
             # single-line: //
-            # single-line: //
-            elif state == 290:   # after '//'
-                # λ (EOF) or newline → go to FINAL STATE 291
+            elif state == 290:
                 if ch is None or ch == '\n':
                     state = 291
                     continue
@@ -3629,15 +3562,11 @@ class Lexer:
                 continue
 
             elif state == 291:
-                # FINAL STATE for '//' comment
-                # lexeme is from start_pos up to (but not including) newline / EOF
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(
                     Token("Single-Line Comment", lexeme, start_line, start_col)
                 )
 
-                # If we ended on a newline, consume it so the next token
-                # starts on the following line
                 if self.current == '\n':
                     self.advance()
 
@@ -3646,23 +3575,18 @@ class Lexer:
 
 
             elif state == 292:
-                # INSIDE multi-line comment body after '/*'
 
                 if ch is None:
-                    # EOF before seeing closing '*/' → UNTERMINATED COMMENT (ERROR, NOT TOKEN)
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
                         f"Error on line {start_line}: {lexeme!r} is an unterminated multi-line comment"
                     )
 
                 if ch == '*':
-                    # possible start of '*/'
                     self.advance()
                     state = 293
                     continue
 
-                # ascii4 / whitespace / anything allowed in comment body:
-                # just keep consuming (including newlines, tabs, etc.)
                 self.advance()
                 continue
 
@@ -3691,28 +3615,22 @@ class Lexer:
 
 
             elif state == 293:
-                # We have seen at least one '*' inside '/* ...'
-
                 if ch is None:
-                    # EOF while still looking for '/' → still UNTERMINATED (ERROR, NOT TOKEN)
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
                         f"Error on line {start_line}: {lexeme!r} is an unterminated multi-line comment"
                     )
 
                 if ch == '*':
-                    # still in a run of stars, stay here
                     self.advance()
                     state = 293
                     continue
 
                 if ch == '/':
-                    # found closing '*/'
                     self.advance()
                     state = 294
                     continue
 
-                # some other char (ascii5) → back to comment body
                 self.advance()
                 state = 292
                 continue
@@ -3741,14 +3659,10 @@ class Lexer:
 
 
             elif state == 294:
-                # We just finished reading '*/'
-
                 if ch is None or self.is_whitespace(ch):
-                    # valid delimiter → go to FINAL STATE 295
                     state = 295
                     continue
 
-                # anything else → invalid delimiter after multi-line comment
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme (invalid delimiter after multi-line comment)"
