@@ -719,7 +719,6 @@ class Lexer:
                 state = 196
                 continue
 
-            # beam: b e a m
             elif state == 2:
                 if ch == 'a':
                     self.advance()
@@ -752,10 +751,9 @@ class Lexer:
 
             elif state == 5:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("beam", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "beam", start_line, start_col))
                 return
 
-            # blueprint: b l u e p r i n t
             elif state == 6:
                 if ch == 'u':
                     self.advance()
@@ -828,7 +826,7 @@ class Lexer:
 
             elif state == 14:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("blueprint", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "blueprint", start_line, start_col))
                 return
 
 
@@ -873,7 +871,7 @@ class Lexer:
             
             elif state == 19:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("brick", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "brick", start_line, start_col))
                 return
 
             # ===================================================
@@ -892,7 +890,6 @@ class Lexer:
                 state = 196
                 continue
 
-            # cement: c e m e n t
             elif state == 21:
                 if ch == 'm':
                     self.advance()
@@ -941,11 +938,9 @@ class Lexer:
 
             elif state == 26:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("cement", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "cement", start_line, start_col))
                 return
 
-
-            # crack: c r a c k
             elif state == 27:
                 if ch == 'a':
                     self.advance()
@@ -986,7 +981,7 @@ class Lexer:
 
             elif state == 31:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("crack", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "crack", start_line, start_col))
                 return
 
             # ===================================================
@@ -1022,7 +1017,7 @@ class Lexer:
 
             elif state == 34:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("do", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "do", start_line, start_col))
                 return
 
             elif state == 35:
@@ -1049,7 +1044,7 @@ class Lexer:
 
             elif state == 37:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("door", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "door", start_line, start_col))
                 return
 
             # ===================================================
@@ -1096,7 +1091,7 @@ class Lexer:
 
             elif state == 42:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("else", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "else", start_line, start_col))
                 return
 
             # ===================================================
@@ -1119,7 +1114,6 @@ class Lexer:
                 state = 196
                 continue
 
-            # for
             elif state == 44:
                 if ch == 'r':
                     self.advance()
@@ -1144,7 +1138,7 @@ class Lexer:
 
             elif state == 46:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("for", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "for", start_line, start_col))
                 return
 
             # field: f i e l d
@@ -1188,11 +1182,9 @@ class Lexer:
 
             elif state == 51:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("field", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "field", start_line, start_col))
                 return
 
-
-            # fragile: f r a g i l e
             elif state == 52:
                 if ch == 'a':
                     self.advance()
@@ -1249,7 +1241,7 @@ class Lexer:
 
             elif state == 58:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("fragile", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "fragile", start_line, start_col))
                 return
 
             # ===================================================
@@ -1268,7 +1260,6 @@ class Lexer:
                 state = 196
                 continue
 
-            # glass: g l a s s
             elif state == 60:
                 if ch == 'a':
                     self.advance()
@@ -1308,10 +1299,9 @@ class Lexer:
 
             elif state == 64:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("glass", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "glass", start_line, start_col))
                 return
 
-            # ground: g r o u n d
             elif state == 65:
                 if ch == 'o':
                     self.advance()
@@ -1360,7 +1350,7 @@ class Lexer:
             
             elif state == 70:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("ground", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "ground", start_line, start_col))
                 return
 
             # ===================================================
@@ -1387,7 +1377,6 @@ class Lexer:
                 state = 196
                 continue
 
-            # home: h o m e
             elif state == 73:
                 if ch == 'e':
                     self.advance()
@@ -1412,7 +1401,7 @@ class Lexer:
 
             elif state == 75:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("home", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "home", start_line, start_col))
                 return                
 
             # house: h o u s e
@@ -1448,7 +1437,7 @@ class Lexer:
             
             elif state == 79:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("house", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "house", start_line, start_col))
                 return
 
             # ===================================================
@@ -1479,7 +1468,7 @@ class Lexer:
 
             elif state == 82:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("if", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "if", start_line, start_col))
                 return
 
             # ===================================================
@@ -1526,7 +1515,7 @@ class Lexer:
 
             elif state == 87:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("mend", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "mend", start_line, start_col))
                 return                
 
             # ===================================================
@@ -1565,7 +1554,6 @@ class Lexer:
                 state = 196
                 continue
 
-            # roof
             elif state == 91:
                 if self.is_whitespace(ch):
                     state = 92
@@ -1582,10 +1570,9 @@ class Lexer:
 
             elif state == 92:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("roof", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "roof", start_line, start_col))
                 return                
 
-            # room
             elif state == 93:
                 if self.is_delim1(ch):
                     state = 94
@@ -1602,7 +1589,7 @@ class Lexer:
 
             elif state == 94:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("room", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "room", start_line, start_col))
                 return                
 
 
@@ -1658,7 +1645,7 @@ class Lexer:
 
             elif state == 100:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("solid", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "solid", start_line, start_col))
                 return
 
             # ===================================================
@@ -1705,7 +1692,7 @@ class Lexer:
 
             elif state == 105:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile", start_line, start_col))
                 return
 
             # ===================================================
@@ -1752,7 +1739,7 @@ class Lexer:
 
             elif state == 110:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("view", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "view", start_line, start_col))
                 return
 
             # ===================================================
@@ -1775,7 +1762,6 @@ class Lexer:
                 state = 196
                 continue
 
-            # wall: w a l l
             elif state == 112:
                 if ch == 'l':
                     self.advance()
@@ -1808,10 +1794,9 @@ class Lexer:
 
             elif state == 115:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("wall", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "wall", start_line, start_col))
                 return
 
-            # while: w h i l e
             elif state == 116:
                 if ch == 'i':
                     self.advance()
@@ -1852,10 +1837,9 @@ class Lexer:
 
             elif state == 120:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("while", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "while", start_line, start_col))
                 return            
 
-            # write: w r i t e
             elif state == 121:
                 if ch == 'i':
                     self.advance()
@@ -1896,7 +1880,7 @@ class Lexer:
             
             elif state == 125:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("write", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "write", start_line, start_col))
                 return
 
             # ===================================================
@@ -1904,7 +1888,6 @@ class Lexer:
             #            %, %=, >, >=, <, <=  (126–161)
             # ===================================================
 
-            # '=' or '=='
             elif state == 126:
                 if ch == '=':
                     self.advance()
@@ -1922,7 +1905,7 @@ class Lexer:
 
             elif state == 127:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("=", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "=", start_line, start_col))
                 return
 
             elif state == 128:
@@ -1937,10 +1920,9 @@ class Lexer:
             
             elif state == 129:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("==", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "==", start_line, start_col))
                 return
 
-            # '+', '++', '+='
             elif state == 130:
                 if ch == '+':
                     self.advance()
@@ -1961,7 +1943,7 @@ class Lexer:
 
             elif state == 131:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("+", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "+", start_line, start_col))
                 return
 
             elif state == 132:
@@ -1976,7 +1958,7 @@ class Lexer:
 
             elif state == 133:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("++", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "++", start_line, start_col))
                 return
 
             elif state == 134:
@@ -1991,29 +1973,25 @@ class Lexer:
 
             elif state == 135:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("+=", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "+=", start_line, start_col))
                 return
 
-            # '-', '--', '-=' (and negative numbers)
             elif state == 136:
                 if self.is_number(ch):
                     self.advance()
                     state = 236
                     continue
 
-                # 2) "--"
                 if ch == '-':
                     self.advance()
                     state = 138
                     continue
 
-                # 3) "-="
                 if ch == '=':
                     self.advance()
                     state = 140
                     continue
 
-                # 4) single '-'
                 if self.is_delim11(ch):
                     state = 137
                     continue
@@ -2025,7 +2003,7 @@ class Lexer:
 
             elif state == 137:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("-", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "-", start_line, start_col))
                 return
 
             elif state == 138:
@@ -2040,7 +2018,7 @@ class Lexer:
 
             elif state == 139:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("--", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "--", start_line, start_col))
                 return
 
             elif state == 140:
@@ -2054,12 +2032,10 @@ class Lexer:
                 )
 
             elif state == 141:
-                # FINAL STATE for "-="
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("-=", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "-=", start_line, start_col))
                 return
 
-            # '*', '*='
             elif state == 142:
                 if ch == '=':
                     self.advance()
@@ -2077,7 +2053,7 @@ class Lexer:
 
             elif state == 143:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("*", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "*", start_line, start_col))
                 return
 
             elif state == 144:
@@ -2092,22 +2068,21 @@ class Lexer:
 
             elif state == 145:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("*=", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "*=", start_line, start_col))
                 return
 
-            # '/', '/=', '//' and '/* ... */'
             elif state == 146:
                 if ch == '/':
                     self.advance()
-                    state = 290      # line comment "///..." or "//"
+                    state = 290
                     continue
                 if ch == '*':
                     self.advance()
-                    state = 292      # block comment "/* ... */"
+                    state = 292
                     continue
                 if ch == '=':
                     self.advance()
-                    state = 148      # "/="
+                    state = 148
                     continue
 
                 if self.is_delim10(ch):
@@ -2121,7 +2096,7 @@ class Lexer:
 
             elif state == 147:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("/", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "/", start_line, start_col))
                 return
 
             elif state == 148:
@@ -2136,10 +2111,9 @@ class Lexer:
 
             elif state == 149:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("/=", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "/=", start_line, start_col))
                 return
 
-            # '%', '%='
             elif state == 150:
                 if ch == '=':
                     self.advance()
@@ -2156,7 +2130,7 @@ class Lexer:
 
             elif state == 151:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("%", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "%", start_line, start_col))
                 return
 
             elif state == 152:
@@ -2171,10 +2145,9 @@ class Lexer:
 
             elif state == 153:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("%=", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "%=", start_line, start_col))
                 return
 
-            # '>', '>='
             elif state == 154:
                 if ch == '=':
                     self.advance()
@@ -2192,7 +2165,7 @@ class Lexer:
 
             elif state == 155:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(">", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, ">", start_line, start_col))
                 return
 
             elif state == 156:
@@ -2207,10 +2180,9 @@ class Lexer:
 
             elif state == 157:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(">=", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, ">=", start_line, start_col))
                 return
 
-            # '<', '<='
             elif state == 158:
                 if ch == '=':
                     self.advance()
@@ -2228,7 +2200,7 @@ class Lexer:
 
             elif state == 159:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("<", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "<", start_line, start_col))
                 return
 
             elif state == 160:
@@ -2243,7 +2215,7 @@ class Lexer:
 
             elif state == 161:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("<=", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "<=", start_line, start_col))
                 return
 
 
@@ -2251,7 +2223,6 @@ class Lexer:
             # Logical / bitwise / punctuation with 2-step finals
             # ===================================================
 
-            # '!' and '!='
             elif state == 162:
                 if ch == '=':
                     self.advance()
@@ -2267,7 +2238,7 @@ class Lexer:
 
             elif state == 163:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("!", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "!", start_line, start_col))
                 return
 
             elif state == 164:
@@ -2281,10 +2252,9 @@ class Lexer:
 
             elif state == 165:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("!=", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "!=", start_line, start_col))
                 return
 
-            # '&' (address-of) and '&&' (logical AND)
             elif state == 166:
                 if ch == '&':
                     self.advance()
@@ -2300,7 +2270,7 @@ class Lexer:
 
             elif state == 167:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("&", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "&", start_line, start_col))
                 return
 
             elif state == 168:
@@ -2314,10 +2284,9 @@ class Lexer:
 
             elif state == 169:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("&&", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "&&", start_line, start_col))
                 return
 
-            # '||' (logical OR) - single '|' is invalid
             elif state == 170:
                 if ch == '|':
                     self.advance()
@@ -2339,12 +2308,11 @@ class Lexer:
 
             elif state == 172:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("||", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "||", start_line, start_col))
                 return
 
             # Single-character separators with their own final states
 
-            # '{'
             elif state == 173:
                 if self.is_delim12(ch):
                     state = 174
@@ -2356,10 +2324,9 @@ class Lexer:
 
             elif state == 174:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("{", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "{", start_line, start_col))
                 return
 
-            # '}'
             elif state == 175:
                 if self.is_delim13(ch):
                     state = 176
@@ -2371,10 +2338,9 @@ class Lexer:
 
             elif state == 176:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("}", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "}", start_line, start_col))
                 return
 
-            # '('
             elif state == 177:
                 if self.is_delim14(ch):
                     state = 178
@@ -2386,10 +2352,9 @@ class Lexer:
 
             elif state == 178:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("(", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "(", start_line, start_col))
                 return
 
-            # ')'
             elif state == 179:
                 if self.is_delim15(ch):
                     state = 180
@@ -2401,10 +2366,9 @@ class Lexer:
 
             elif state == 180:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(")", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, ")", start_line, start_col))
                 return
 
-            # '['
             elif state == 181:
                 if self.is_delim16(ch):
                     state = 182
@@ -2416,10 +2380,9 @@ class Lexer:
 
             elif state == 182:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("[", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "[", start_line, start_col))
                 return
 
-            # ']'
             elif state == 183:
                 if self.is_delim17(ch):
                     state = 184
@@ -2431,10 +2394,9 @@ class Lexer:
 
             elif state == 184:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("]", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "]", start_line, start_col))
                 return
 
-            # '.' (dot)
             elif state == 185:
                 if self.is_alpha_id(ch):
                     state = 186
@@ -2446,10 +2408,9 @@ class Lexer:
 
             elif state == 186:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(".", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, ".", start_line, start_col))
                 return
 
-            # ','
             elif state == 187:
                 if self.is_delim18(ch):
                     state = 188
@@ -2461,7 +2422,7 @@ class Lexer:
 
             elif state == 188:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(",", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, ",", start_line, start_col))
                 return
 
             # ':'
@@ -2476,10 +2437,9 @@ class Lexer:
 
             elif state == 190:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(":", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, ":", start_line, start_col))
                 return
 
-            # ';'
             elif state == 191:
                 if self.is_delim19(ch):
                     state = 192
@@ -2491,7 +2451,7 @@ class Lexer:
 
             elif state == 192:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(";", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, ";", start_line, start_col))
                 return
 
 
@@ -2502,17 +2462,17 @@ class Lexer:
 
             elif state == 193:  # space
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("space", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "space", start_line, start_col))
                 return
 
             elif state == 194:  # tab
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tab", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tab", start_line, start_col))
                 return
 
             elif state == 195:  # newline
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("newline", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "newline", start_line, start_col))
                 return
 
 
@@ -2522,11 +2482,10 @@ class Lexer:
             # Final states: 197,199,...,235 (after delim20)
             # ===================================================
 
-            # length 1
             elif state == 196:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 198  # length 2
+                    state = 198
                     continue
                 if self.is_delim20(ch):
                     state = 197
@@ -2539,14 +2498,13 @@ class Lexer:
             elif state == 197:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 2
             elif state == 198:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 200  # length 3
+                    state = 200
                     continue
                 if self.is_delim20(ch):
                     state = 199
@@ -2559,14 +2517,13 @@ class Lexer:
             elif state == 199:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 3
             elif state == 200:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 202  # length 4
+                    state = 202
                     continue
                 if self.is_delim20(ch):
                     state = 201
@@ -2579,14 +2536,13 @@ class Lexer:
             elif state == 201:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 4
             elif state == 202:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 204  # length 5
+                    state = 204
                     continue
                 if self.is_delim20(ch):
                     state = 203
@@ -2599,14 +2555,13 @@ class Lexer:
             elif state == 203:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 5
             elif state == 204:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 206  # length 6
+                    state = 206 
                     continue
                 if self.is_delim20(ch):
                     state = 205
@@ -2619,14 +2574,13 @@ class Lexer:
             elif state == 205:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 6
             elif state == 206:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 208  # length 7
+                    state = 208 
                     continue
                 if self.is_delim20(ch):
                     state = 207
@@ -2639,14 +2593,13 @@ class Lexer:
             elif state == 207:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 7
             elif state == 208:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 210  # length 8
+                    state = 210 
                     continue
                 if self.is_delim20(ch):
                     state = 209
@@ -2659,14 +2612,13 @@ class Lexer:
             elif state == 209:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 8
             elif state == 210:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 212  # length 9
+                    state = 212
                     continue
                 if self.is_delim20(ch):
                     state = 211
@@ -2679,14 +2631,13 @@ class Lexer:
             elif state == 211:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 9
             elif state == 212:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 214  # length 10
+                    state = 214
                     continue
                 if self.is_delim20(ch):
                     state = 213
@@ -2699,14 +2650,13 @@ class Lexer:
             elif state == 213:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 10
             elif state == 214:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 216  # length 11
+                    state = 216 
                     continue
                 if self.is_delim20(ch):
                     state = 215
@@ -2719,14 +2669,13 @@ class Lexer:
             elif state == 215:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 11
             elif state == 216:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 218  # length 12
+                    state = 218
                     continue
                 if self.is_delim20(ch):
                     state = 217
@@ -2739,14 +2688,13 @@ class Lexer:
             elif state == 217:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 12
             elif state == 218:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 220  # length 13
+                    state = 220
                     continue
                 if self.is_delim20(ch):
                     state = 219
@@ -2759,14 +2707,13 @@ class Lexer:
             elif state == 219:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 13
             elif state == 220:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 222  # length 14
+                    state = 222
                     continue
                 if self.is_delim20(ch):
                     state = 221
@@ -2779,14 +2726,13 @@ class Lexer:
             elif state == 221:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 14
             elif state == 222:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 224  # length 15
+                    state = 224
                     continue
                 if self.is_delim20(ch):
                     state = 223
@@ -2799,14 +2745,13 @@ class Lexer:
             elif state == 223:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 15
             elif state == 224:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 226  # length 16
+                    state = 226
                     continue
                 if self.is_delim20(ch):
                     state = 225
@@ -2819,14 +2764,13 @@ class Lexer:
             elif state == 225:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 16
             elif state == 226:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 228  # length 17
+                    state = 228
                     continue
                 if self.is_delim20(ch):
                     state = 227
@@ -2839,14 +2783,13 @@ class Lexer:
             elif state == 227:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 17
             elif state == 228:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 230  # length 18
+                    state = 230
                     continue
                 if self.is_delim20(ch):
                     state = 229
@@ -2859,14 +2802,13 @@ class Lexer:
             elif state == 229:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 18
             elif state == 230:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 232  # length 19
+                    state = 232
                     continue
                 if self.is_delim20(ch):
                     state = 231
@@ -2879,14 +2821,13 @@ class Lexer:
             elif state == 231:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 19
             elif state == 232:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 234  # length 20
+                    state = 234 
                     continue
                 if self.is_delim20(ch):
                     state = 233
@@ -2899,10 +2840,9 @@ class Lexer:
             elif state == 233:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            # length 20 (max)
             elif state == 234:
                 if self.is_delim20(ch):
                     state = 235
@@ -2920,9 +2860,8 @@ class Lexer:
             elif state == 235:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(tok_type, lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
-
 
 
             # ===================================================
@@ -2931,18 +2870,17 @@ class Lexer:
             # Floats:   up to 7 decimal digits (states 266..280)
             # ===================================================
 
-            # integer length 1
             elif state == 236:
                 if self.is_delim21(ch):
                     state = 237
                     continue
                 if self.is_number(ch):
                     self.advance()
-                    state = 238  # integer length 2
+                    state = 238
                     continue
                 if ch == '.':
                     self.advance()
-                    state = 266  # enter decimal part
+                    state = 266
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -2952,14 +2890,13 @@ class Lexer:
 
             elif state == 237:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 2
             elif state == 238:
                 if self.is_number(ch):
                     self.advance()
-                    state = 240  # integer length 3
+                    state = 240
                     continue
                 if ch == '.':
                     self.advance()
@@ -2975,14 +2912,13 @@ class Lexer:
 
             elif state == 239:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 3
             elif state == 240:
                 if self.is_number(ch):
                     self.advance()
-                    state = 242  # integer length 4
+                    state = 242
                     continue
                 if ch == '.':
                     self.advance()
@@ -2998,14 +2934,13 @@ class Lexer:
 
             elif state == 241:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 4
             elif state == 242:
                 if self.is_number(ch):
                     self.advance()
-                    state = 244  # integer length 5
+                    state = 244
                     continue
                 if ch == '.':
                     self.advance()
@@ -3021,14 +2956,13 @@ class Lexer:
 
             elif state == 243:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 5
             elif state == 244:
                 if self.is_number(ch):
                     self.advance()
-                    state = 246  # integer length 6
+                    state = 246
                     continue
                 if ch == '.':
                     self.advance()
@@ -3044,14 +2978,13 @@ class Lexer:
 
             elif state == 245:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 6
             elif state == 246:
                 if self.is_number(ch):
                     self.advance()
-                    state = 248  # integer length 7
+                    state = 248 
                     continue
                 if ch == '.':
                     self.advance()
@@ -3067,14 +3000,13 @@ class Lexer:
 
             elif state == 247:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 7
             elif state == 248:
                 if self.is_number(ch):
                     self.advance()
-                    state = 250  # integer length 8
+                    state = 250 
                     continue
                 if ch == '.':
                     self.advance()
@@ -3090,14 +3022,13 @@ class Lexer:
 
             elif state == 249:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 8
             elif state == 250:
                 if self.is_number(ch):
                     self.advance()
-                    state = 252  # integer length 9
+                    state = 252 
                     continue
                 if ch == '.':
                     self.advance()
@@ -3113,14 +3044,13 @@ class Lexer:
 
             elif state == 251:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 9
             elif state == 252:
                 if self.is_number(ch):
                     self.advance()
-                    state = 254  # integer length 10
+                    state = 254
                     continue
                 if ch == '.':
                     self.advance()
@@ -3136,14 +3066,13 @@ class Lexer:
 
             elif state == 253:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 10
             elif state == 254:
                 if self.is_number(ch):
                     self.advance()
-                    state = 256  # integer length 11
+                    state = 256 
                     continue
                 if ch == '.':
                     self.advance()
@@ -3159,14 +3088,13 @@ class Lexer:
 
             elif state == 255:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 11
             elif state == 256:
                 if self.is_number(ch):
                     self.advance()
-                    state = 258  # integer length 12
+                    state = 258 
                     continue
                 if ch == '.':
                     self.advance()
@@ -3182,14 +3110,13 @@ class Lexer:
 
             elif state == 257:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 12
             elif state == 258:
                 if self.is_number(ch):
                     self.advance()
-                    state = 260  # integer length 13
+                    state = 260
                     continue
                 if ch == '.':
                     self.advance()
@@ -3205,14 +3132,13 @@ class Lexer:
 
             elif state == 259:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 13
             elif state == 260:
                 if self.is_number(ch):
                     self.advance()
-                    state = 262  # integer length 14
+                    state = 262 
                     continue
                 if ch == '.':
                     self.advance()
@@ -3228,14 +3154,13 @@ class Lexer:
 
             elif state == 261:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 14
             elif state == 262:
                 if self.is_number(ch):
                     self.advance()
-                    state = 264  # integer length 15
+                    state = 264 
                     continue
                 if ch == '.':
                     self.advance()
@@ -3251,10 +3176,9 @@ class Lexer:
 
             elif state == 263:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
-            # integer length 15 (max)
             elif state == 264:
                 if self.is_number(ch):
                     lexeme = self.source[start_pos:self.pos]
@@ -3275,27 +3199,24 @@ class Lexer:
 
             elif state == 265:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("tile_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
                 return
 
             # ---- decimal part ----
-            # state 266: just after '.', expecting first decimal digit
             elif state == 266:
                 if not self.is_number(ch):
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
                         f"Error on line {start_line}: {lexeme!r} is an invalid lexeme (expected digit after '.')"
                     )
-                # consume first decimal digit and go to length-1 state (268)
                 self.advance()
-                state = 268  # decimal length 1
+                state = 268
                 continue
 
-            # decimal length 1
             elif state == 268:
                 if self.is_number(ch):
                     self.advance()
-                    state = 270  # decimal length 2
+                    state = 270
                     continue
                 if self.is_delim22(ch):
                     state = 267
@@ -3307,14 +3228,13 @@ class Lexer:
 
             elif state == 267:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("glass_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "glass_lit", start_line, start_col))
                 return
 
-            # decimal length 2
             elif state == 270:
                 if self.is_number(ch):
                     self.advance()
-                    state = 272  # decimal length 3
+                    state = 272 
                     continue
                 if self.is_delim22(ch):
                     state = 269
@@ -3326,14 +3246,13 @@ class Lexer:
 
             elif state == 269:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("glass_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "glass_lit", start_line, start_col))
                 return
 
-            # decimal length 3
             elif state == 272:
                 if self.is_number(ch):
                     self.advance()
-                    state = 274  # decimal length 4
+                    state = 274 
                     continue
                 if self.is_delim22(ch):
                     state = 271
@@ -3345,14 +3264,13 @@ class Lexer:
 
             elif state == 271:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("glass_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "glass_lit", start_line, start_col))
                 return
 
-            # decimal length 4
             elif state == 274:
                 if self.is_number(ch):
                     self.advance()
-                    state = 276  # decimal length 5
+                    state = 276 
                     continue
                 if self.is_delim22(ch):
                     state = 273
@@ -3364,14 +3282,13 @@ class Lexer:
 
             elif state == 273:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("glass_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "glass_lit", start_line, start_col))
                 return
 
-            # decimal length 5
             elif state == 276:
                 if self.is_number(ch):
                     self.advance()
-                    state = 278  # decimal length 6
+                    state = 278
                     continue
                 if self.is_delim22(ch):
                     state = 275
@@ -3383,14 +3300,13 @@ class Lexer:
 
             elif state == 275:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("glass_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "glass_lit", start_line, start_col))
                 return
 
-            # decimal length 6
             elif state == 278:
                 if self.is_number(ch):
                     self.advance()
-                    state = 280  # decimal length 7
+                    state = 280
                     continue
                 if self.is_delim22(ch):
                     state = 277
@@ -3402,10 +3318,9 @@ class Lexer:
 
             elif state == 277:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("glass_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "glass_lit", start_line, start_col))
                 return
 
-            # decimal length 7 (max)
             elif state == 280:
                 if self.is_number(ch):
                     lexeme = self.source[start_pos:self.pos]
@@ -3422,11 +3337,8 @@ class Lexer:
 
             elif state == 279:
                 lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token("glass_lit", lexeme, start_line, start_col))
+                self.tokens.append(Token(lexeme, "glass_lit", start_line, start_col))
                 return
-
-
-
 
 
             # ===================================================
@@ -3473,13 +3385,12 @@ class Lexer:
             elif state == 284:
                 lexeme = self.source[start_pos:self.pos]
                 if self.is_delim23(ch):
-                    self.tokens.append(Token("brick_lit", lexeme, start_line, start_col))
+                    self.tokens.append(Token(lexeme, "brick_lit", start_line, start_col))
                     return
 
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
                 )
-
 
 
             # ===================================================
@@ -3488,7 +3399,6 @@ class Lexer:
 
             elif state == 286:
                 if ch == '"':
-                    # closing quote
                     self.advance()
                     state = 288
                     continue
@@ -3497,11 +3407,9 @@ class Lexer:
                     state = 287
                     continue
                 if self.is_ascii2(ch):
-                    # ascii content
                     self.advance()
                     continue
 
-                # newline / EOF / bad char → unterminated
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
@@ -3522,7 +3430,7 @@ class Lexer:
             elif state == 288:
                 lexeme = self.source[start_pos:self.pos]
                 if self.is_delim23(ch):
-                    self.tokens.append(Token("wall_lit", lexeme, start_line, start_col))
+                    self.tokens.append(Token(lexeme, "wall_lit", start_line, start_col))
                     return
 
                 raise LexerError(
@@ -3530,35 +3438,27 @@ class Lexer:
                 )
 
 
-
-
             # ===================================================
             # Comments: '//' and '/* ... */' 290, 292, 293, 295
             # ===================================================
 
-            # single-line: //
             elif state == 290:
-                # after seeing '//' – inside single-line comment body
+
                 ch = self.current
 
-                # λ (EOF) OR newline ends the comment → go to FINAL STATE 291
                 if ch is None or self.is_newline(ch):
                     state = 291
                     continue
 
-                # ascii3 / tab / any other char on this line → stay in 290
                 self.advance()
                 continue
 
             elif state == 291:
-                # FINAL state for single-line comment
-                # comment text is from start_pos up to (but not including) newline/EOF
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(
-                    Token("Single-Line Comment", lexeme, start_line, start_col)
+                    Token(lexeme, "Single-Line Comment", start_line, start_col)
                 )
 
-                # If we ended on a newline, consume it so next token starts on next line
                 if self.current == '\n':
                     self.advance()
 
@@ -3568,7 +3468,7 @@ class Lexer:
                 if ch is None:
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
-                        f"Error on line {start_line}: {lexeme!r} is an unterminated multi-line comment"
+                        f"Error on line {start_line}: {lexeme!r} is an multi-line comment"
                     )
 
                 if ch == '*':
@@ -3583,7 +3483,7 @@ class Lexer:
                 if ch is None:
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
-                        f"Error on line {start_line}: {lexeme!r} is an unterminated multi-line comment"
+                        f"Error on line {start_line}: {lexeme!r} is an invalid lexeme due to unterminated multi-line comment"
                     )
 
                 if ch == '*':
@@ -3614,6 +3514,6 @@ class Lexer:
             elif state == 295:
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(
-                    Token("Multi-Line Comment", lexeme, start_line, start_col)
+                    Token(lexeme, "Multi-Line Comment", start_line, start_col)
                 )
                 return

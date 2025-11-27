@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 @dataclass
 class Token:
-    tokenType: str  
-    lexeme: str      
+    lexeme: str  
+    tokenType: str      
     line: int
     column: int
 
