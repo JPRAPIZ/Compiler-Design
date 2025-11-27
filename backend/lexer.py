@@ -93,9 +93,14 @@ class LexerError(Exception):
 
 class Lexer:
     def __init__(self, source: str):
+        # Source = Program String LAHAT
         self.source = source
+
+        # Positions
         self.pos = 0
         self.current = self.source[0] if self.source else None
+
+        # Token List
         self.tokens: List[Token] = []
 
         # Error list for error panel

@@ -213,27 +213,28 @@ home 0;
                 </colgroup>
                 <thead className="sticky top-0 bg-[#222]">
                   <tr>
-                    <th className="px-2 py-1 text-left font-semibold">Lexeme</th>
-                    <th className="px-2 py-1 text-left font-semibold">Token</th>
-                    <th className="px-2 py-1 text-left font-semibold">Line</th>
-                    <th className="px-2 py-1 text-left font-semibold">Col</th>
+                    <th className="px-2 py-1 text-lg text-left font-semibold">Lexeme</th>
+                    <th className="px-2 py-1 text-lg text-left font-semibold">Token</th>
+                    <th className="px-2 py-1 text-lg text-left font-semibold">Line</th>
+                    <th className="px-2 py-1 text-lg text-left font-semibold">Col</th>
                   </tr>
                 </thead>
                 <tbody className="bg-[#0a0a0a]">
                   {tokens.map((t, idx) => (
                     <tr key={idx} className="border-t border-[#333] hover:bg-[#1a1a1a]">
-                      <td className="px-3 py-1 text-sm md:text-base font-mono break-words whitespace-pre-wrap text-gray-100">
+                      <td className="px-3 py-1 text-sm md:text-lg font-mono break-words whitespace-pre-wrap text-gray-100">
                         {t.lexeme}
                       </td>
-                      <td className="px-2 py-1 text-sm md:text-base font-mono whitespace-nowrap text-gray-100">
+                      <td className="px-2 py-1 text-sm md:text-lg font-mono whitespace-nowrap text-gray-100">
                         {t.tokenType}
                       </td>
-                      <td className="px-2 py-1 text-sm md:text-base whitespace-nowrap text-gray-400">
+                      <td className="px-2 py-1 text-sm md:text-lg whitespace-nowrap text-gray-400">
                         {t.line}
                       </td>
-                      <td className="px-2 py-1 text-sm md:text-base whitespace-nowrap text-gray-400">
+                      <td className="px-2 py-1 text-sm md:text-lg whitespace-nowrap text-gray-400">
                         {t.column}
                       </td>
+                      {/* text-sm md:text-base original / text-lg modified */}
                     </tr>
                   ))}
                 </tbody>
