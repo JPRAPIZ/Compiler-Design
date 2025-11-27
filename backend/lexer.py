@@ -2,10 +2,10 @@
 from typing import List
 from tokens import Token
 
-#   DO THE TRANSITION LIMITS FOR ID AND TILE GLASS LIT 
-#   FIX WALL LIMITS
-#   FIX TILE LIMITS / GLASS LIMITS
-#   FIX ORDER OF RETURN LEXEME FIRST THEN TOKENS (CONSISTENCY)
+#   DO THE TRANSITION LIMITS FOR ID AND TILE GLASS LIT (DONE)
+#   FIX WALL LIMITS (DONE)
+#   FIX TILE LIMITS / GLASS LIMITS (DONE)
+#   FIX ORDER OF RETURN LEXEME FIRST THEN TOKENS (CONSISTENCY) (DONE)
 #   
 
 # numbers { 0 , 1 , 2 , 3 , 4 , 5 , 6 , 7 , 8 , 9 }
@@ -98,11 +98,13 @@ class Lexer:
         self.current = self.source[0] if self.source else None
         self.tokens: List[Token] = []
 
+        # Error list for error panel
         self.errors: list[dict] = []
 
         self.line = 1
         self.column = 1
 
+        # For Error Highlighting
         self.token_start_pos = 0
         self.token_start_line = 1
         self.token_start_col = 1
@@ -162,9 +164,9 @@ class Lexer:
         self.pos += 1
         self.current = self.source[self.pos] if self.pos < len(self.source) else None
 
-    def peek(self):
-        nxt = self.pos + 1
-        return self.source[nxt] if nxt < len(self.source) else None
+    # def peek(self):
+    #     nxt = self.pos + 1
+    #     return self.source[nxt] if nxt < len(self.source) else None
 
     # ------------------------------------------------------------
     # Character classes
@@ -197,9 +199,6 @@ class Lexer:
 
     def is_operator_char(self, ch) -> bool:
         return ch in "+-*/%<>=!&|"
-
-    # def is_ascii_range(self, ch, lo: int, hi: int) -> bool:
-    #     return ch is not None and lo <= ord(ch) <= hi
 
     def is_ascii1(self, ch) -> bool:
         # ascii code 32 to 126 excluding \ and '
@@ -440,8 +439,6 @@ class Lexer:
 
                 continue
 
-                # If a token was pending when the error occurred (e.g., delimiter error),
-                # still add it to the token list so it appears in the Tokens panel.
                 if self.pendingToken is not None:
                     self.tokenList.append(self.pendingToken)
                     self.pendingToken = None
@@ -695,7 +692,7 @@ class Lexer:
 
                 lexeme = ch
                 raise LexerError(
-                    f"Error on line {self.line}, col {self.column}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {self.line}, col {self.column}: {lexeme!r} is an Invalid Lexeme - Unidentified Character"
                 )
 
 
@@ -746,7 +743,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 5:
@@ -821,7 +818,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 14:
@@ -866,7 +863,7 @@ class Lexer:
                 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
             
             elif state == 19:
@@ -933,7 +930,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 26:
@@ -976,7 +973,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 31:
@@ -1012,7 +1009,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 34:
@@ -1039,7 +1036,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 37:
@@ -1086,7 +1083,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 42:
@@ -1133,7 +1130,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 46:
@@ -1177,7 +1174,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 51:
@@ -1236,7 +1233,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 58:
@@ -1294,7 +1291,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 64:
@@ -1345,7 +1342,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
             
             elif state == 70:
@@ -1396,7 +1393,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 75:
@@ -1432,7 +1429,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
             
             elif state == 79:
@@ -1463,7 +1460,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 82:
@@ -1510,7 +1507,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 87:
@@ -1565,7 +1562,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 92:
@@ -1584,7 +1581,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 94:
@@ -1640,7 +1637,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an iInvalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 100:
@@ -1687,7 +1684,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 105:
@@ -1734,7 +1731,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 110:
@@ -1789,7 +1786,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 115:
@@ -1832,7 +1829,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 120:
@@ -1875,7 +1872,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
             
             elif state == 125:
@@ -1900,7 +1897,7 @@ class Lexer:
                 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 127:
@@ -1915,7 +1912,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
             
             elif state == 129:
@@ -1938,7 +1935,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 131:
@@ -1953,7 +1950,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 133:
@@ -1968,7 +1965,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 135:
@@ -1998,7 +1995,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 137:
@@ -2013,7 +2010,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 139:
@@ -2028,7 +2025,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 141:
@@ -2048,7 +2045,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 143:
@@ -2063,7 +2060,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 145:
@@ -2091,7 +2088,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 147:
@@ -2106,7 +2103,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 149:
@@ -2125,7 +2122,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 151:
@@ -2140,7 +2137,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 153:
@@ -2160,7 +2157,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 155:
@@ -2175,7 +2172,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an iInvalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 157:
@@ -2195,7 +2192,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 159:
@@ -2210,7 +2207,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 161:
@@ -2233,7 +2230,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 163:
@@ -2247,7 +2244,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 165:
@@ -2265,7 +2262,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 167:
@@ -2279,7 +2276,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 169:
@@ -2294,7 +2291,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 171:
@@ -2303,7 +2300,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 172:
@@ -2319,7 +2316,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 174:
@@ -2333,7 +2330,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 176:
@@ -2347,7 +2344,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 178:
@@ -2361,7 +2358,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 180:
@@ -2375,7 +2372,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 182:
@@ -2389,7 +2386,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 184:
@@ -2403,7 +2400,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 186:
@@ -2417,7 +2414,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 188:
@@ -2432,7 +2429,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 190:
@@ -2446,7 +2443,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 192:
@@ -2492,7 +2489,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 197:
@@ -2511,7 +2508,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 199:
@@ -2530,7 +2527,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 201:
@@ -2549,7 +2546,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 203:
@@ -2568,7 +2565,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 205:
@@ -2587,7 +2584,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 207:
@@ -2606,7 +2603,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 209:
@@ -2625,7 +2622,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 211:
@@ -2644,7 +2641,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 213:
@@ -2663,7 +2660,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 215:
@@ -2682,7 +2679,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 217:
@@ -2701,7 +2698,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 219:
@@ -2720,7 +2717,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 221:
@@ -2739,7 +2736,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 223:
@@ -2758,7 +2755,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 225:
@@ -2777,7 +2774,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 227:
@@ -2796,7 +2793,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 229:
@@ -2815,7 +2812,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 231:
@@ -2834,7 +2831,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 233:
@@ -2850,11 +2847,11 @@ class Lexer:
                 if self.is_alpha_num(ch):
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
-                        f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                        f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter - ID Limit 20 Characters"
                     )
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 235:
@@ -2885,7 +2882,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 237:
@@ -2907,7 +2904,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 239:
@@ -2929,7 +2926,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 241:
@@ -2951,7 +2948,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 243:
@@ -2973,7 +2970,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 245:
@@ -2995,7 +2992,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 247:
@@ -3017,7 +3014,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 249:
@@ -3039,7 +3036,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 251:
@@ -3061,7 +3058,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 253:
@@ -3083,7 +3080,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 255:
@@ -3105,7 +3102,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 257:
@@ -3127,7 +3124,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 259:
@@ -3149,7 +3146,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 261:
@@ -3171,7 +3168,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 263:
@@ -3183,7 +3180,7 @@ class Lexer:
                 if self.is_number(ch):
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
-                        f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                        f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter - Limit 20 Digits"
                     )
                 if ch == '.':
                     self.advance()
@@ -3194,7 +3191,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter "
                 )
 
             elif state == 265:
@@ -3207,7 +3204,7 @@ class Lexer:
                 if not self.is_number(ch):
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
-                        f"Error on line {start_line}: {lexeme!r} is an invalid lexeme (expected digit after '.')"
+                        f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter (expected digit after '.')"
                     )
                 self.advance()
                 state = 268
@@ -3223,7 +3220,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 267:
@@ -3241,7 +3238,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 269:
@@ -3259,7 +3256,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 271:
@@ -3277,7 +3274,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 273:
@@ -3295,7 +3292,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 275:
@@ -3313,7 +3310,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 277:
@@ -3325,14 +3322,14 @@ class Lexer:
                 if self.is_number(ch):
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
-                        f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                        f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter - Limit 7 Digits"
                     )
                 if self.is_delim22(ch):
                     state = 279
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 279:
@@ -3356,7 +3353,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
 
@@ -3367,7 +3364,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
 
@@ -3378,7 +3375,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
 
@@ -3389,7 +3386,7 @@ class Lexer:
                     return
 
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
 
@@ -3412,7 +3409,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
 
@@ -3423,7 +3420,7 @@ class Lexer:
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme (invalid escape sequence)"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Escape Sequence"
                 )
 
 
@@ -3434,7 +3431,7 @@ class Lexer:
                     return
 
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Unterminated"
                 )
 
 
@@ -3468,7 +3465,7 @@ class Lexer:
                 if ch is None:
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
-                        f"Error on line {start_line}: {lexeme!r} is an multi-line comment"
+                        f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Unterminated"
                     )
 
                 if ch == '*':
@@ -3483,7 +3480,7 @@ class Lexer:
                 if ch is None:
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
-                        f"Error on line {start_line}: {lexeme!r} is an invalid lexeme due to unterminated multi-line comment"
+                        f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Unterminated"
                     )
 
                 if ch == '*':
@@ -3508,7 +3505,7 @@ class Lexer:
 
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an invalid lexeme (invalid delimiter after multi-line comment)"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
             elif state == 295:

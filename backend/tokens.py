@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 
-# FIX THIS BEFORE PRESENTATION BAKA MADALE
-
 @dataclass
 class Token:
     lexeme: str  

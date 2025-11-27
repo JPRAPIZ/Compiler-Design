@@ -207,9 +207,9 @@ home 0;
               <table className="w-full text-sm text-gray-300 table-fixed">
                 <colgroup>
                   <col className="w-1/2" />   {/* Lexeme */}
-                  <col className="w-1/4" />   {/* Token */}
-                  <col className="w-1/8" />   {/* Line */}
-                  <col className="w-1/8" />   {/* Col */}
+                  <col className="w-1/3" />   {/* Token */}
+                  <col className="w-1/12" />   {/* Line */}
+                  <col className="w-1/12" />   {/* Col */}
                 </colgroup>
                 <thead className="sticky top-0 bg-[#222]">
                   <tr>
