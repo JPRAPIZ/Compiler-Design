@@ -61,6 +61,7 @@ app.add_middleware(
 
 @app.post("/lex", response_model=LexResult)
 def lex_source(body: LexRequest):
+    # function calls to backend
     lexer = Lexer(body.source)
     tokens: list[Token] = lexer.scanTokens()
 
