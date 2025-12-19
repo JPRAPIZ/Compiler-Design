@@ -169,6 +169,11 @@ class Lexer:
             return int_part
         return f"{int_part}.{frac_part}"
 
+    def normalize_int(self, lexeme: str) -> str:
+        stripped = lexeme.lstrip('0')
+        return stripped if stripped != "" else "0"
+
+
 
     # ============================================================
     # Basic helpers
@@ -2907,8 +2912,9 @@ class Lexer:
                 )
 
             elif state == 237:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 238:
@@ -2929,8 +2935,9 @@ class Lexer:
                 )
 
             elif state == 239:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 240:
@@ -2951,8 +2958,9 @@ class Lexer:
                 )
 
             elif state == 241:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 242:
@@ -2973,8 +2981,9 @@ class Lexer:
                 )
 
             elif state == 243:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 244:
@@ -2995,8 +3004,9 @@ class Lexer:
                 )
 
             elif state == 245:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 246:
@@ -3017,8 +3027,9 @@ class Lexer:
                 )
 
             elif state == 247:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 248:
@@ -3039,8 +3050,9 @@ class Lexer:
                 )
 
             elif state == 249:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 250:
@@ -3061,8 +3073,9 @@ class Lexer:
                 )
 
             elif state == 251:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 252:
@@ -3083,8 +3096,9 @@ class Lexer:
                 )
 
             elif state == 253:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 254:
@@ -3105,8 +3119,9 @@ class Lexer:
                 )
 
             elif state == 255:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 256:
@@ -3127,8 +3142,9 @@ class Lexer:
                 )
 
             elif state == 257:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 258:
@@ -3149,8 +3165,9 @@ class Lexer:
                 )
 
             elif state == 259:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 260:
@@ -3171,8 +3188,9 @@ class Lexer:
                 )
 
             elif state == 261:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 262:
@@ -3193,8 +3211,9 @@ class Lexer:
                 )
 
             elif state == 263:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             elif state == 264:
@@ -3225,8 +3244,9 @@ class Lexer:
                 )
 
             elif state == 265:
-                lexeme = self.source[start_pos:self.pos]
-                self.tokens.append(Token(lexeme, "tile_lit", start_line, start_col))
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             # ---- decimal part ----
