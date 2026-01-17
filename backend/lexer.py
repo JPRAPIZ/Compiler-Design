@@ -437,6 +437,16 @@ class Lexer:
             or self.is_whitespace(ch)
         )
 
+    def is_delim24(self, ch) -> bool:
+        # delim24 { alpha_num, operators, { , } , ( , ) , [ , ] , : , ; , , , ' , "" , whitespace }
+        return (
+            self.is_eof(ch)
+            or self.is_alpha_num(ch)
+            or self.is_operator_char(ch)
+            or ch in ('{', '}', '(', ')', '[', ']', ':', ';', ',', "'", '"',)
+            or self.is_whitespace(ch)
+        )
+
     # ============================================================
     # Public API
     # ============================================================
@@ -509,12 +519,12 @@ class Lexer:
 
                 if ch == '\t':
                     self.advance()
-                    state = 194   # tab
+                    state = 195   # tab
                     continue
 
                 if ch == '\n':
                     self.advance()
-                    state = 195   # newline
+                    state = 197   # newline
                     continue
 
                 if ch == 'b':
@@ -590,7 +600,7 @@ class Lexer:
                 # --- numbers (integer / float) ---
                 if self.is_number(ch):
                     self.advance()
-                    state = 236
+                    state = 239
                     continue
 
                 # --- operators & punctuation ---
@@ -702,18 +712,18 @@ class Lexer:
                 # --- brick / wall literals ---
                 if ch == "'":
                     self.advance()
-                    state = 281
+                    state = 284
                     continue
 
                 if ch == '"':
                     self.advance()
-                    state = 286
+                    state = 289
                     continue
 
                 # --- identifiers ---
                 if self.is_alpha_id(ch):
                     self.advance()
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = ch
@@ -739,7 +749,7 @@ class Lexer:
                     self.advance()
                     state = 15
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 2:
@@ -747,7 +757,7 @@ class Lexer:
                     self.advance()
                     state = 3
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 3:
@@ -755,7 +765,7 @@ class Lexer:
                     self.advance()
                     state = 4
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 4:
@@ -764,7 +774,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -782,7 +792,7 @@ class Lexer:
                     self.advance()
                     state = 7
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 7:
@@ -790,7 +800,7 @@ class Lexer:
                     self.advance()
                     state = 8
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 8:
@@ -798,7 +808,7 @@ class Lexer:
                     self.advance()
                     state = 9
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 9:
@@ -806,7 +816,7 @@ class Lexer:
                     self.advance()
                     state = 10
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 10:
@@ -814,7 +824,7 @@ class Lexer:
                     self.advance()
                     state = 11
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 11:
@@ -822,7 +832,7 @@ class Lexer:
                     self.advance()
                     state = 12
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 12:
@@ -830,7 +840,7 @@ class Lexer:
                     self.advance()
                     state = 13
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 13:
@@ -839,7 +849,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -859,7 +869,7 @@ class Lexer:
                     self.advance()
                     state = 16
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 16:
@@ -867,7 +877,7 @@ class Lexer:
                     self.advance()
                     state = 17
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 17:
@@ -875,7 +885,7 @@ class Lexer:
                     self.advance()
                     state = 18
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 18:
@@ -884,7 +894,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):    
-                    state = 196
+                    state = 199
                     continue
                 
                 lexeme = self.source[start_pos:self.pos]
@@ -910,7 +920,7 @@ class Lexer:
                     self.advance()
                     state = 27
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 21:
@@ -918,7 +928,7 @@ class Lexer:
                     self.advance()
                     state = 22
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 22:
@@ -926,7 +936,7 @@ class Lexer:
                     self.advance()
                     state = 23
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 23:
@@ -934,7 +944,7 @@ class Lexer:
                     self.advance()
                     state = 24
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 24:
@@ -942,7 +952,7 @@ class Lexer:
                     self.advance()
                     state = 25
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 25:
@@ -951,7 +961,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -969,7 +979,7 @@ class Lexer:
                     self.advance()
                     state = 28
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 28:
@@ -977,7 +987,7 @@ class Lexer:
                     self.advance()
                     state = 29
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 29:
@@ -985,7 +995,7 @@ class Lexer:
                     self.advance()
                     state = 30
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 30:
@@ -994,7 +1004,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1016,7 +1026,7 @@ class Lexer:
                     self.advance()
                     state = 33
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 33:
@@ -1030,7 +1040,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1048,7 +1058,7 @@ class Lexer:
                     self.advance()
                     state = 36
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 36:
@@ -1057,7 +1067,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1079,7 +1089,7 @@ class Lexer:
                     self.advance()
                     state = 39
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 39:
@@ -1087,7 +1097,7 @@ class Lexer:
                     self.advance()
                     state = 40
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 40:
@@ -1095,7 +1105,7 @@ class Lexer:
                     self.advance()
                     state = 41
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 41:
@@ -1104,7 +1114,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1134,7 +1144,7 @@ class Lexer:
                     self.advance()
                     state = 52
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 44:
@@ -1142,7 +1152,7 @@ class Lexer:
                     self.advance()
                     state = 45
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 45:
@@ -1151,7 +1161,7 @@ class Lexer:
                     continue
         
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1170,7 +1180,7 @@ class Lexer:
                     self.advance()
                     state = 48
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 48:
@@ -1178,7 +1188,7 @@ class Lexer:
                     self.advance()
                     state = 49
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 49:
@@ -1186,7 +1196,7 @@ class Lexer:
                     self.advance()
                     state = 50
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 50:
@@ -1195,7 +1205,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1213,7 +1223,7 @@ class Lexer:
                     self.advance()
                     state = 53
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 53:
@@ -1221,7 +1231,7 @@ class Lexer:
                     self.advance()
                     state = 54
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 54:
@@ -1229,7 +1239,7 @@ class Lexer:
                     self.advance()
                     state = 55
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 55:
@@ -1237,7 +1247,7 @@ class Lexer:
                     self.advance()
                     state = 56
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 56:
@@ -1245,7 +1255,7 @@ class Lexer:
                     self.advance()
                     state = 57
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 57:
@@ -1254,7 +1264,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1280,7 +1290,7 @@ class Lexer:
                     self.advance()
                     state = 65
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 60:
@@ -1288,7 +1298,7 @@ class Lexer:
                     self.advance()
                     state = 61
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 61:
@@ -1296,7 +1306,7 @@ class Lexer:
                     self.advance()
                     state = 62
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 62:
@@ -1304,7 +1314,7 @@ class Lexer:
                     self.advance()
                     state = 63
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 63:
@@ -1312,7 +1322,7 @@ class Lexer:
                     state = 64
                     continue
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1330,7 +1340,7 @@ class Lexer:
                     self.advance()
                     state = 66
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 66:
@@ -1338,7 +1348,7 @@ class Lexer:
                     self.advance()
                     state = 67
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 67:
@@ -1346,7 +1356,7 @@ class Lexer:
                     self.advance()
                     state = 68
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 68:
@@ -1354,7 +1364,7 @@ class Lexer:
                     self.advance()
                     state = 69
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 69:
@@ -1363,7 +1373,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1385,7 +1395,7 @@ class Lexer:
                     self.advance()
                     state = 72
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 72:
@@ -1397,7 +1407,7 @@ class Lexer:
                     self.advance()
                     state = 76
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 73:
@@ -1405,7 +1415,7 @@ class Lexer:
                     self.advance()
                     state = 74
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 74:
@@ -1414,7 +1424,7 @@ class Lexer:
                     continue
                 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1433,7 +1443,7 @@ class Lexer:
                     self.advance()
                     state = 77
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 77:
@@ -1441,7 +1451,7 @@ class Lexer:
                     self.advance()
                     state = 78
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 78:
@@ -1450,7 +1460,7 @@ class Lexer:
                     continue
                 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1472,7 +1482,7 @@ class Lexer:
                     self.advance()
                     state = 81
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 81:
@@ -1481,7 +1491,7 @@ class Lexer:
                     continue
             
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1503,7 +1513,7 @@ class Lexer:
                     self.advance()
                     state = 84
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 84:
@@ -1511,7 +1521,7 @@ class Lexer:
                     self.advance()
                     state = 85
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 85:
@@ -1519,7 +1529,7 @@ class Lexer:
                     self.advance()
                     state = 86
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 86:
@@ -1528,7 +1538,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1554,7 +1564,7 @@ class Lexer:
                     self.advance()
                     state = 121
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 89:
@@ -1562,7 +1572,7 @@ class Lexer:
                     self.advance()
                     state = 90
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 90:
@@ -1574,7 +1584,7 @@ class Lexer:
                     self.advance()
                     state = 93
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 91:
@@ -1583,7 +1593,7 @@ class Lexer:
                     continue
                 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1602,7 +1612,7 @@ class Lexer:
                     continue
                 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1625,7 +1635,7 @@ class Lexer:
                     self.advance()
                     state = 96
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 96:
@@ -1633,7 +1643,7 @@ class Lexer:
                     self.advance()
                     state = 97
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 97:
@@ -1641,7 +1651,7 @@ class Lexer:
                     self.advance()
                     state = 98
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 98:
@@ -1649,7 +1659,7 @@ class Lexer:
                     self.advance()
                     state = 99
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 99:
@@ -1658,7 +1668,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1680,7 +1690,7 @@ class Lexer:
                     self.advance()
                     state = 102
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 102:
@@ -1688,7 +1698,7 @@ class Lexer:
                     self.advance()
                     state = 103
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 103:
@@ -1696,7 +1706,7 @@ class Lexer:
                     self.advance()
                     state = 104
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 104:
@@ -1705,7 +1715,7 @@ class Lexer:
                     continue
                 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1727,7 +1737,7 @@ class Lexer:
                     self.advance()
                     state = 107
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 107:
@@ -1735,7 +1745,7 @@ class Lexer:
                     self.advance()
                     state = 108
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 108:
@@ -1743,7 +1753,7 @@ class Lexer:
                     self.advance()
                     state = 109
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 109:
@@ -1752,7 +1762,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1782,7 +1792,7 @@ class Lexer:
                     self.advance()
                     state = 121
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 112:
@@ -1790,7 +1800,7 @@ class Lexer:
                     self.advance()
                     state = 113
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 113:
@@ -1798,7 +1808,7 @@ class Lexer:
                     self.advance()
                     state = 114
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 114:
@@ -1807,7 +1817,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1825,7 +1835,7 @@ class Lexer:
                     self.advance()
                     state = 117
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 117:
@@ -1833,7 +1843,7 @@ class Lexer:
                     self.advance()
                     state = 118
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 118:
@@ -1841,7 +1851,7 @@ class Lexer:
                     self.advance()
                     state = 119
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 119:
@@ -1850,7 +1860,7 @@ class Lexer:
                     continue
                     
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -1868,7 +1878,7 @@ class Lexer:
                     self.advance()
                     state = 122
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 122:
@@ -1876,7 +1886,7 @@ class Lexer:
                     self.advance()
                     state = 123
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 123:
@@ -1884,7 +1894,7 @@ class Lexer:
                     self.advance()
                     state = 124
                     continue
-                state = 196
+                state = 199
                 continue
 
             elif state == 124:
@@ -1893,7 +1903,7 @@ class Lexer:
                     continue
 
                 if self.is_alpha_num(ch):
-                    state = 196
+                    state = 199
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -2002,7 +2012,7 @@ class Lexer:
             elif state == 136:
                 if self.is_number(ch):
                     self.advance()
-                    state = 236
+                    state = 239
                     continue
 
                 if ch == '-':
@@ -2097,11 +2107,11 @@ class Lexer:
             elif state == 146:
                 if ch == '/':
                     self.advance()
-                    state = 290
+                    state = 293
                     continue
                 if ch == '*':
                     self.advance()
-                    state = 292
+                    state = 295
                     continue
                 if ch == '=':
                     self.advance()
@@ -2488,12 +2498,12 @@ class Lexer:
                 self.tokens.append(Token(lexeme, "space", start_line, start_col))
                 return
 
-            elif state == 194:  # tab
+            elif state == 195:  # tab
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token(lexeme, "tab", start_line, start_col))
                 return
 
-            elif state == 195:  # newline
+            elif state == 197:  # newline
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token(lexeme, "newline", start_line, start_col))
                 return
@@ -2505,370 +2515,370 @@ class Lexer:
             # Final states: 197,199,...,235 (after delim20)
             # ===================================================
 
-            elif state == 196:
-                if self.is_alpha_num(ch):
-                    self.advance()
-                    state = 198
-                    continue
-                if self.is_delim20(ch):
-                    state = 197
-                    continue
-                lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
-
-            elif state == 197:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 198:
-                if self.is_alpha_num(ch):
-                    self.advance()
-                    state = 200
-                    continue
-                if self.is_delim20(ch):
-                    state = 199
-                    continue
-                lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
-
             elif state == 199:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 200:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 202
-                    continue
-                if self.is_delim20(ch):
                     state = 201
                     continue
+                if self.is_delim20(ch):
+                    state = 200
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 200:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 201:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 202:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 204
-                    continue
-                if self.is_delim20(ch):
                     state = 203
                     continue
+                if self.is_delim20(ch):
+                    state = 202
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 202:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 203:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 204:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 206 
-                    continue
-                if self.is_delim20(ch):
                     state = 205
                     continue
+                if self.is_delim20(ch):
+                    state = 204
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 204:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 205:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 206:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 208 
-                    continue
-                if self.is_delim20(ch):
                     state = 207
                     continue
+                if self.is_delim20(ch):
+                    state = 206
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 206:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 207:
+                if self.is_alpha_num(ch):
+                    self.advance()
+                    state = 209 
+                    continue
+                if self.is_delim20(ch):
+                    state = 208
+                    continue
                 lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
 
             elif state == 208:
-                if self.is_alpha_num(ch):
-                    self.advance()
-                    state = 210 
-                    continue
-                if self.is_delim20(ch):
-                    state = 209
-                    continue
                 lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 209:
+                if self.is_alpha_num(ch):
+                    self.advance()
+                    state = 211 
+                    continue
+                if self.is_delim20(ch):
+                    state = 210
+                    continue
                 lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
 
             elif state == 210:
-                if self.is_alpha_num(ch):
-                    self.advance()
-                    state = 212
-                    continue
-                if self.is_delim20(ch):
-                    state = 211
-                    continue
                 lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 211:
+                if self.is_alpha_num(ch):
+                    self.advance()
+                    state = 213 
+                    continue
+                if self.is_delim20(ch):
+                    state = 212
+                    continue
                 lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
 
             elif state == 212:
-                if self.is_alpha_num(ch):
-                    self.advance()
-                    state = 214
-                    continue
-                if self.is_delim20(ch):
-                    state = 213
-                    continue
                 lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 213:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 214:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 216 
-                    continue
-                if self.is_delim20(ch):
                     state = 215
                     continue
+                if self.is_delim20(ch):
+                    state = 214
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 214:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 215:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 216:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 218
-                    continue
-                if self.is_delim20(ch):
                     state = 217
                     continue
+                if self.is_delim20(ch):
+                    state = 216
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 216:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 217:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 218:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 220
-                    continue
-                if self.is_delim20(ch):
                     state = 219
                     continue
+                if self.is_delim20(ch):
+                    state = 218
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 218:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 219:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 220:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 222
-                    continue
-                if self.is_delim20(ch):
                     state = 221
                     continue
+                if self.is_delim20(ch):
+                    state = 220
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 220:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 221:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 222:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 224
-                    continue
-                if self.is_delim20(ch):
                     state = 223
                     continue
+                if self.is_delim20(ch):
+                    state = 222
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 222:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 223:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 224:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 226
-                    continue
-                if self.is_delim20(ch):
                     state = 225
                     continue
+                if self.is_delim20(ch):
+                    state = 224
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 224:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 225:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 226:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 228
-                    continue
-                if self.is_delim20(ch):
                     state = 227
                     continue
+                if self.is_delim20(ch):
+                    state = 226
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 226:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 227:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 228:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 230
-                    continue
-                if self.is_delim20(ch):
                     state = 229
                     continue
+                if self.is_delim20(ch):
+                    state = 228
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 228:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 229:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 230:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 232
-                    continue
-                if self.is_delim20(ch):
                     state = 231
                     continue
+                if self.is_delim20(ch):
+                    state = 230
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 230:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
 
             elif state == 231:
-                lexeme = self.source[start_pos:self.pos]
-                tok_type = self.get_id_token_type(lexeme)
-                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
-                return
-
-            elif state == 232:
                 if self.is_alpha_num(ch):
                     self.advance()
-                    state = 234 
+                    state = 233
                     continue
                 if self.is_delim20(ch):
-                    state = 233
+                    state = 232
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
-            elif state == 233:
+            elif state == 232:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
                 self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
                 return
 
-            elif state == 234:
-                if self.is_delim20(ch):
+            elif state == 233:
+                if self.is_alpha_num(ch):
+                    self.advance()
                     state = 235
+                    continue
+                if self.is_delim20(ch):
+                    state = 234
+                    continue
+                lexeme = self.source[start_pos:self.pos]
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
+
+            elif state == 234:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
+
+            elif state == 235:
+                if self.is_alpha_num(ch):
+                    self.advance()
+                    state = 237
+                    continue
+                if self.is_delim20(ch):
+                    state = 236
+                    continue
+                lexeme = self.source[start_pos:self.pos]
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
+
+            elif state == 236:
+                lexeme = self.source[start_pos:self.pos]
+                tok_type = self.get_id_token_type(lexeme)
+                self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
+                return
+
+            elif state == 237:
+                if self.is_delim20(ch):
+                    state = 238
                     continue
                 if self.is_alpha_num(ch):
                     lexeme = self.source[start_pos:self.pos]
@@ -2880,7 +2890,7 @@ class Lexer:
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
-            elif state == 235:
+            elif state == 238:
                 lexeme = self.source[start_pos:self.pos]
                 tok_type = self.get_id_token_type(lexeme)
                 self.tokens.append(Token(lexeme, tok_type, start_line, start_col))
@@ -2893,330 +2903,330 @@ class Lexer:
             # Floats:   up to 7 decimal digits (states 266..280)
             # ===================================================
 
-            elif state == 236:
+            elif state == 239:
                 if self.is_delim21(ch):
-                    state = 237
-                    continue
-                if self.is_number(ch):
-                    self.advance()
-                    state = 238
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-
-                lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
-
-            elif state == 237:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 238:
-                if self.is_number(ch):
-                    self.advance()
                     state = 240
                     continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
-                    state = 239
-                    continue
-                lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
-
-            elif state == 239:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 240:
                 if self.is_number(ch):
                     self.advance()
-                    state = 242
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 241
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 240:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 241:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 242:
                 if self.is_number(ch):
                     self.advance()
-                    state = 244
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 243
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 242
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 242:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 243:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 244:
                 if self.is_number(ch):
                     self.advance()
-                    state = 246
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 245
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 244
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 244:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 245:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 246:
                 if self.is_number(ch):
                     self.advance()
-                    state = 248 
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 247
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 246
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 246:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 247:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 248:
                 if self.is_number(ch):
                     self.advance()
-                    state = 250 
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 249
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 248
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 248:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 249:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 250:
                 if self.is_number(ch):
                     self.advance()
-                    state = 252 
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 251
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 250
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 250:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 251:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 252:
                 if self.is_number(ch):
                     self.advance()
-                    state = 254
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 253
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 252
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 252:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 253:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
+                if self.is_number(ch):
+                    self.advance()
+                    state = 255 
+                    continue
+                if ch == '.':
+                    self.advance()
+                    state = 266
+                    continue
+                if self.is_delim21(ch):
+                    state = 254
+                    continue
+                lexeme = self.source[start_pos:self.pos]
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
 
             elif state == 254:
-                if self.is_number(ch):
-                    self.advance()
-                    state = 256 
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
-                    state = 255
-                    continue
-                lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 255:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 256:
                 if self.is_number(ch):
                     self.advance()
-                    state = 258 
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 257
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 256
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 256:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 257:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 258:
                 if self.is_number(ch):
                     self.advance()
-                    state = 260
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 259
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 258
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 258:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
 
             elif state == 259:
-                raw = self.source[start_pos:self.pos]
-                norm = self.normalize_int(raw)
-                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
-                return
-
-            elif state == 260:
                 if self.is_number(ch):
                     self.advance()
-                    state = 262 
-                    continue
-                if ch == '.':
-                    self.advance()
-                    state = 266
-                    continue
-                if self.is_delim21(ch):
                     state = 261
                     continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 260
+                    continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
-            elif state == 261:
+            elif state == 260:
                 raw = self.source[start_pos:self.pos]
                 norm = self.normalize_int(raw)
                 self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
-            elif state == 262:
+            elif state == 261:
                 if self.is_number(ch):
                     self.advance()
-                    state = 264 
+                    state = 263
                     continue
                 if ch == '.':
                     self.advance()
-                    state = 266
+                    state = 269
                     continue
                 if self.is_delim21(ch):
-                    state = 263
+                    state = 262
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
-            elif state == 263:
+            elif state == 262:
                 raw = self.source[start_pos:self.pos]
                 norm = self.normalize_int(raw)
                 self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
+            elif state == 263:
+                if self.is_number(ch):
+                    self.advance()
+                    state = 265
+                    continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 264
+                    continue
+                lexeme = self.source[start_pos:self.pos]
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
+
             elif state == 264:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
+
+            elif state == 265:
+                if self.is_number(ch):
+                    self.advance()
+                    state = 267
+                    continue
+                if ch == '.':
+                    self.advance()
+                    state = 269
+                    continue
+                if self.is_delim21(ch):
+                    state = 266
+                    continue
+                lexeme = self.source[start_pos:self.pos]
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
+
+            elif state == 266:
+                raw = self.source[start_pos:self.pos]
+                norm = self.normalize_int(raw)
+                self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
+                return
+
+            elif state == 267:
                 if self.is_number(ch):
                     raw = self.source[start_pos:self.pos] + ch
                     # Count significant digits (strip leading zeros)
@@ -3224,7 +3234,7 @@ class Lexer:
                     if significant == "" or len(significant) <= 15:
                         # Only zeros exceeded the limit → accept
                         self.advance()
-                        state = 264   # stay here
+                        state = 267   # stay here
                         continue
 
                     raise LexerError(
@@ -3233,75 +3243,37 @@ class Lexer:
 
                 if ch == '.':
                     self.advance()
-                    state = 266
+                    state = 269
                     continue
                 if self.is_delim21(ch):
-                    state = 265
+                    state = 268
                     continue
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter "
                 )
 
-            elif state == 265:
+            elif state == 268:
                 raw = self.source[start_pos:self.pos]
                 norm = self.normalize_int(raw)
                 self.tokens.append(Token(norm, "tile_lit", start_line, start_col))
                 return
 
             # ---- decimal part ----
-            elif state == 266:
+            elif state == 269:
                 if not self.is_number(ch):
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
                         f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter (expected digit after '.')"
                     )
                 self.advance()
-                state = 268
+                state = 270
                 continue
-
-            elif state == 268:
-                if self.is_number(ch):
-                    self.advance()
-                    state = 270
-                    continue
-                if self.is_delim22(ch):
-                    state = 267
-                    continue
-                lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
-
-            elif state == 267:
-                raw_lexeme = self.source[start_pos:self.pos]
-                norm_lexeme = self.normalize_float(raw_lexeme)
-                self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
-                return
 
             elif state == 270:
                 if self.is_number(ch):
                     self.advance()
-                    state = 272 
-                    continue
-                if self.is_delim22(ch):
-                    state = 269
-                    continue
-                lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
-
-            elif state == 269:
-                raw_lexeme = self.source[start_pos:self.pos]
-                norm_lexeme = self.normalize_float(raw_lexeme)
-                self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
-                return
-
-            elif state == 272:
-                if self.is_number(ch):
-                    self.advance()
-                    state = 274 
+                    state = 272
                     continue
                 if self.is_delim22(ch):
                     state = 271
@@ -3317,10 +3289,10 @@ class Lexer:
                 self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
                 return
 
-            elif state == 274:
+            elif state == 272:
                 if self.is_number(ch):
                     self.advance()
-                    state = 276 
+                    state = 274
                     continue
                 if self.is_delim22(ch):
                     state = 273
@@ -3336,10 +3308,10 @@ class Lexer:
                 self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
                 return
 
-            elif state == 276:
+            elif state == 274:
                 if self.is_number(ch):
                     self.advance()
-                    state = 278
+                    state = 276 
                     continue
                 if self.is_delim22(ch):
                     state = 275
@@ -3355,10 +3327,10 @@ class Lexer:
                 self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
                 return
 
-            elif state == 278:
+            elif state == 276:
                 if self.is_number(ch):
                     self.advance()
-                    state = 280
+                    state = 278
                     continue
                 if self.is_delim22(ch):
                     state = 277
@@ -3374,24 +3346,11 @@ class Lexer:
                 self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
                 return
 
-            elif state == 280:
+            elif state == 278:
                 if self.is_number(ch):
-                    raw = self.source[start_pos:self.pos] + ch
-
-                    int_part, frac_part = raw.split('.', 1)
-
-                    # Remove trailing zeros
-                    significant_frac = frac_part.rstrip('0')
-
-                    if len(significant_frac) <= 7:
-                        # Only zeros exceeded the limit → accept
-                        self.advance()
-                        state = 280
-                        continue
-
-                    raise LexerError(
-                        f"Error on line {start_line}: {raw!r} is an Invalid Lexeme - Limit 7 Decimal Digits"
-                    )
+                    self.advance()
+                    state = 280
+                    continue
                 if self.is_delim22(ch):
                     state = 279
                     continue
@@ -3406,12 +3365,63 @@ class Lexer:
                 self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
                 return
 
+            elif state == 280:
+                if self.is_number(ch):
+                    self.advance()
+                    state = 282
+                    continue
+                if self.is_delim22(ch):
+                    state = 281
+                    continue
+                lexeme = self.source[start_pos:self.pos]
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
+
+            elif state == 281:
+                raw_lexeme = self.source[start_pos:self.pos]
+                norm_lexeme = self.normalize_float(raw_lexeme)
+                self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
+                return
+
+            elif state == 282:
+                if self.is_number(ch):
+                    raw = self.source[start_pos:self.pos] + ch
+
+                    int_part, frac_part = raw.split('.', 1)
+
+                    # Remove trailing zeros
+                    significant_frac = frac_part.rstrip('0')
+
+                    if len(significant_frac) <= 7:
+                        # Only zeros exceeded the limit → accept
+                        self.advance()
+                        state = 282
+                        continue
+
+                    raise LexerError(
+                        f"Error on line {start_line}: {raw!r} is an Invalid Lexeme - Limit 7 Decimal Digits"
+                    )
+                if self.is_delim22(ch):
+                    state = 283
+                    continue
+                lexeme = self.source[start_pos:self.pos]
+                raise LexerError(
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                )
+
+            elif state == 283:
+                raw_lexeme = self.source[start_pos:self.pos]
+                norm_lexeme = self.normalize_float(raw_lexeme)
+                self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
+                return
+
 
             # ===================================================
             # Brick literal: 'a' or '\n'   281–284  (unchanged except 284)
             # ===================================================
 
-            elif state == 281:
+            elif state == 284:
                 # Inside brick literal body, after opening '
                 if ch is None or self.is_newline(ch):
                     # Reached EOF or newline before closing '
@@ -3423,13 +3433,13 @@ class Lexer:
                 if ch == '\\':
                     # Start of escape sequence
                     self.advance()
-                    state = 282
+                    state = 285
                     continue
 
                 if self.is_ascii1(ch):
                     # Normal brick character
                     self.advance()
-                    state = 283
+                    state = 286
                     continue
 
                 # Any other character is not allowed in the brick literal
@@ -3439,7 +3449,7 @@ class Lexer:
                 )
 
 
-            elif state == 282:
+            elif state == 285:
                 # After seeing backslash inside brick literal
                 if ch is None or self.is_newline(ch):
                     # Backslash at end of line/file
@@ -3451,7 +3461,7 @@ class Lexer:
                 if self.is_escape_seq_char(ch):
                     # Valid escape → go to state expecting closing '
                     self.advance()
-                    state = 283
+                    state = 286
                     continue
 
                 # Invalid escape sequence like \j
@@ -3461,7 +3471,7 @@ class Lexer:
                 )
 
 
-            elif state == 283:
+            elif state == 286:
                 # Expecting closing single quote '
                 if ch is None or self.is_newline(ch):
                     lexeme = self.source[start_pos:self.pos]
@@ -3471,7 +3481,7 @@ class Lexer:
 
                 if ch == "'":
                     self.advance()
-                    state = 284
+                    state = 287
                     continue
 
                 # Anything else between the char and closing ' is wrong
@@ -3481,7 +3491,7 @@ class Lexer:
                 )
 
 
-            elif state == 284:
+            elif state == 288:
                 # After closing '
                 lexeme = self.source[start_pos:self.pos]
                 if self.is_delim21(ch):
@@ -3505,7 +3515,7 @@ class Lexer:
             # Wall / string literal: "..."  286–288
             # ===================================================
 
-            elif state == 286:
+            elif state == 289:
                 # Inside wall literal body, after opening "
                 if ch is None or self.is_newline(ch):
                     # Reached EOF or newline before closing "
@@ -3517,13 +3527,13 @@ class Lexer:
                 if ch == '"':
                     # Found closing quote → go to state 288 to check delimiter
                     self.advance()
-                    state = 288
+                    state = 291
                     continue
 
                 if ch == '\\':
                     # Start of escape sequence
                     self.advance()
-                    state = 287
+                    state = 290
                     continue
 
                 if self.is_ascii2(ch):
@@ -3538,7 +3548,7 @@ class Lexer:
                 )
 
 
-            elif state == 287:
+            elif state == 290:
                 # After seeing backslash inside wall literal
                 if ch is None or self.is_newline(ch):
                     # Backslash at end of line/file
@@ -3550,7 +3560,7 @@ class Lexer:
                 if self.is_escape_seq_char(ch):
                     # Valid escape → go back to body
                     self.advance()
-                    state = 286
+                    state = 289
                     continue
 
                 # Invalid escape sequence like \j
@@ -3560,7 +3570,7 @@ class Lexer:
                 )
 
 
-            elif state == 288:
+            elif state == 292:
                 # Just consumed closing "
                 lexeme = self.source[start_pos:self.pos]
                 if self.is_delim23(ch):
@@ -3579,18 +3589,18 @@ class Lexer:
             # Comments: '//' and '/* ... */' 290, 292, 293, 295
             # ===================================================
 
-            elif state == 290:
+            elif state == 293:
 
                 ch = self.current
 
                 if ch is None or self.is_newline(ch):
-                    state = 291
+                    state = 294 
                     continue
 
                 self.advance()
                 continue
 
-            elif state == 291:
+            elif state == 294:
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(
                     Token(lexeme, "Single-Line Comment", start_line, start_col)
@@ -3601,7 +3611,7 @@ class Lexer:
 
                 return
 
-            elif state == 292:
+            elif state == 295:
                 if ch is None:
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
@@ -3610,13 +3620,13 @@ class Lexer:
 
                 if ch == '*':
                     self.advance()
-                    state = 293
+                    state = 296
                     continue
 
                 self.advance()
                 continue
 
-            elif state == 293:
+            elif state == 296:
                 if ch is None:
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
@@ -3625,22 +3635,22 @@ class Lexer:
 
                 if ch == '*':
                     self.advance()
-                    state = 293
+                    state = 296
                     continue
 
                 if ch == '/':
                     self.advance()
-                    state = 294
+                    state = 297
                     continue
 
                 self.advance()
-                state = 292
+                state = 295
                 continue
 
 
-            elif state == 294:
+            elif state == 297:
                 if ch is None or self.is_whitespace(ch):
-                    state = 295
+                    state = 298
                     continue
 
                 lexeme = self.source[start_pos:self.pos]
@@ -3648,7 +3658,7 @@ class Lexer:
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
-            elif state == 295:
+            elif state == 298:
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(
                     Token(lexeme, "Multi-Line Comment", start_line, start_col)
