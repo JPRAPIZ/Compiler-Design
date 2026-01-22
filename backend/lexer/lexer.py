@@ -1,12 +1,6 @@
 
 from typing import List
-from tokens import Token
-
-#   DO THE TRANSITION LIMITS FOR ID AND TILE GLASS LIT (DONE)
-#   FIX WALL LIMITS (DONE)
-#   FIX TILE LIMITS / GLASS LIMITS (DONE)
-#   FIX ORDER OF RETURN LEXEME FIRST THEN TOKENS (CONSISTENCY) (DONE)
-#   
+from .tokens import Token
 
 # numbers { 0 , 1 , 2 , 3 , 4 , 5 , 6 , 7 , 8 , 9 }
 numbers = {
@@ -121,7 +115,7 @@ class Lexer:
 
     def add_error(self, message: str, *, start_line=None, start_col=None):
 
-        # Where the error starts (token_start_* for lexemes, current pos for single chars)
+        # Where the error starts
         s_line = start_line if start_line is not None else self.line
         s_col  = start_col if start_col is not None else self.column
 
@@ -154,6 +148,8 @@ class Lexer:
             self.next_id_index += 1
         return f"id{idx}"
 
+# TO BE DISCUSSED ------------------------------------------------------------------------------------
+
     def normalize_float(self, lexeme: str) -> str:
         int_part, frac_part = lexeme.split('.')
 
@@ -173,7 +169,7 @@ class Lexer:
         stripped = lexeme.lstrip('0')
         return stripped if stripped != "" else "0"
 
-
+# -------------------------------------------------------------------------------------------------------
 
     # ============================================================
     # Basic helpers
@@ -190,9 +186,6 @@ class Lexer:
         self.pos += 1
         self.current = self.source[self.pos] if self.pos < len(self.source) else None
 
-    # def peek(self):
-    #     nxt = self.pos + 1
-    #     return self.source[nxt] if nxt < len(self.source) else None
 
     # ------------------------------------------------------------
     # Character classes
@@ -453,7 +446,6 @@ class Lexer:
     # scan tokens get called to api
     def scanTokens(self) -> List[Token]:
         while self.current is not None:
-            # remember where this token starts (for error highlighting)
             self.token_start_pos = self.pos
             self.token_start_line = self.line
             self.token_start_col = self.column
@@ -475,19 +467,11 @@ class Lexer:
 
                 continue
 
-                if self.pendingToken is not None:
-                    self.tokenList.append(self.pendingToken)
-                    self.pendingToken = None
 
         # EOF token
         eof = Token("$", "EOF", self.line, self.column)
         self.tokens.append(eof)
         return self.tokens
-
-
-
-
-
 
     # ============================================================
     # Transition Table
@@ -504,9 +488,18 @@ class Lexer:
 
         state = 0
 
-
         while True:
             ch = self.current
+
+        # DEBUGGING =========================================================================================================
+        # while True:
+        #     if self.pos == last_pos and state == last_state:
+        #         lexeme = self.source[start_pos:self.pos]
+        #         raise LexerError(
+        #             f"Lexer got stuck at line {start_line}, col {start_col}, state {state}, lexeme so far {lexeme!r}"
+        #         )
+        #     last_pos, last_state = self.pos, state
+        # ====================================================================================================================
 
             # ================= STATE 0 (start) =================
             if state == 0:
@@ -2344,7 +2337,7 @@ class Lexer:
                 self.tokens.append(Token(lexeme, "||", start_line, start_col))
                 return
 
-            # Single-character separators with their own final states
+            # Single-character separators
 
             elif state == 173:
                 if self.is_delim12(ch):
@@ -2494,20 +2487,35 @@ class Lexer:
             # ===================================================
 
             elif state == 193:  # space
+                if self.is_delim24(ch):
+                    state = 194
+                    continue
+
+            elif state == 194:
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token(lexeme, "space", start_line, start_col))
                 return
 
             elif state == 195:  # tab
+                if self.is_delim24(ch):
+                    state = 196
+                    continue
+
+
+            elif state == 196:
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token(lexeme, "tab", start_line, start_col))
                 return
 
             elif state == 197:  # newline
+                if self.is_delim24(ch):
+                    state = 198
+                    continue
+
+            elif state == 198:
                 lexeme = self.source[start_pos:self.pos]
                 self.tokens.append(Token(lexeme, "newline", start_line, start_col))
                 return
-
 
             # ===================================================
             # Generic identifier DFA (20-char max)
@@ -3232,7 +3240,7 @@ class Lexer:
                     # Count significant digits (strip leading zeros)
                     significant = raw.lstrip('0')
                     if significant == "" or len(significant) <= 15:
-                        # Only zeros exceeded the limit → accept
+                        # Only zeros exceeded the limit accept
                         self.advance()
                         state = 267   # stay here
                         continue
@@ -3416,6 +3424,8 @@ class Lexer:
                 self.tokens.append(Token(norm_lexeme, "glass_lit", start_line, start_col))
                 return
 
+            # Could raise problems
+
 
             # ===================================================
             # Brick literal: 'a' or '\n'   281–284  (unchanged except 284)
@@ -3431,18 +3441,15 @@ class Lexer:
                     )
 
                 if ch == '\\':
-                    # Start of escape sequence
                     self.advance()
                     state = 285
                     continue
 
                 if self.is_ascii1(ch):
-                    # Normal brick character
                     self.advance()
                     state = 286
                     continue
 
-                # Any other character is not allowed in the brick literal
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Invalid Lexeme {lexeme!r}: invalid character {ch!r}."
@@ -3450,21 +3457,18 @@ class Lexer:
 
 
             elif state == 285:
-                # After seeing backslash inside brick literal
                 if ch is None or self.is_newline(ch):
-                    # Backslash at end of line/file
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
                         f"Invalid Lexeme {lexeme!r}: unterminated escape sequence."
                     )
 
                 if self.is_escape_seq_char(ch):
-                    # Valid escape → go to state expecting closing '
                     self.advance()
                     state = 286
                     continue
 
-                # Invalid escape sequence like \j
+                # Invalid escape sequence
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
                     f"Invalid Lexeme {lexeme!r}: invalid escape sequence '\\{ch}'."
@@ -3484,105 +3488,86 @@ class Lexer:
                     state = 287
                     continue
 
-                # Anything else between the char and closing ' is wrong
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Invalid Lexeme {lexeme!r}: invalid delimiter. Brick Can Only Contain 1 Character"
+                    f"Invalid Lexeme {lexeme!r}: Brick Can Only Contain 1 Character"
                 )
 
-
-            elif state == 288:
-                # After closing '
+            elif state == 287:
                 lexeme = self.source[start_pos:self.pos]
                 if self.is_delim21(ch):
-                    self.tokens.append(Token(lexeme, "brick_lit", start_line, start_col))
-                    return
+                    state = 288
+                    continue
 
                 raise LexerError(
                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
 
 
+            elif state == 288:
+                # After closing '
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token(lexeme, "brick_lit", start_line, start_col))
+                return
 
-                # raise LexerError(
-                #     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Unterminated"
-                # )
-
-                # f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                # f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Escape Sequence"
+            
 
             # ===================================================
             # Wall / string literal: "..."  286–288
             # ===================================================
 
             elif state == 289:
-                # Inside wall literal body, after opening "
                 if ch is None or self.is_newline(ch):
-                    # Reached EOF or newline before closing "
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
                         f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Unterminated"
                     )
 
                 if ch == '"':
-                    # Found closing quote → go to state 288 to check delimiter
                     self.advance()
                     state = 291
                     continue
 
                 if ch == '\\':
-                    # Start of escape sequence
                     self.advance()
                     state = 290
                     continue
 
-                if self.is_ascii2(ch):
-                    # Normal string character
-                    self.advance()
-                    continue
-
-                # Any other character is not allowed in the wall literal
-                lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Invalid Lexeme {lexeme!r}: invalid character {ch!r}."
-                )
-
+                # accept ascii2
+                self.advance()
+                continue
 
             elif state == 290:
-                # After seeing backslash inside wall literal
                 if ch is None or self.is_newline(ch):
-                    # Backslash at end of line/file
                     lexeme = self.source[start_pos:self.pos]
                     raise LexerError(
                         f"Invalid Lexeme {lexeme!r}: unterminated escape sequence."
                     )
 
                 if self.is_escape_seq_char(ch):
-                    # Valid escape → go back to body
                     self.advance()
                     state = 289
                     continue
 
-                # Invalid escape sequence like \j
                 lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                    f"Invalid Lexeme {lexeme!r}: invalid escape sequence '\\{ch}'."
+                    f"Invalid Lexeme {lexeme!r}: invalid escape sequence."
                 )
 
-
-            elif state == 292:
-                # Just consumed closing "
+            elif state == 291:
                 lexeme = self.source[start_pos:self.pos]
                 if self.is_delim23(ch):
-                    # Correct delimiter after closing quote
-                    self.tokens.append(Token(lexeme, "wall_lit", start_line, start_col))
-                    return
+                    state = 292
+                    continue
 
-                # Wrong delimiter after closing quote
-                # lexeme = self.source[start_pos:self.pos]
                 raise LexerError(
-                     f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
+                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
                 )
+
+            elif state == 292:
+                lexeme = self.source[start_pos:self.pos]
+                self.tokens.append(Token(lexeme, "wall_lit", start_line, start_col))
+                return
 
 
             # ===================================================

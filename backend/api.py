@@ -3,8 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 
-from lexer import Lexer
-from tokens import Token
+from lexer.lexer import Lexer
+from lexer.tokens import Token
+
+# change this for another file
+from parser.parserV2 import Parser
+# from parser.predict_set import PREDICT_SET
+
 
 
 
@@ -35,6 +40,10 @@ class LexResult(BaseModel):
     tokens: List[TokenResponse]
     errors: List[ErrorResponse]
 
+# ------------------------------------------------------------------------
+class ParseResult(BaseModel):
+    errors: List[ErrorResponse]
+# added ------------------------------------------------------------------------
 
 # --------- FastAPI app ---------
 
@@ -88,5 +97,46 @@ def lex_source(body: LexRequest):
         for e in lexer.errors
     ]
 
+    return LexResult(
+        tokens=token_responses,
+        errors=error_responses
+    )
 
-    return LexResult(tokens=token_responses, errors=error_responses)
+# @app.post("/parse")
+# def parse_source(body: LexRequest):
+#     lexer = Lexer(body.source)
+#     tokens = lexer.scanTokens()
+
+#     if lexer.errors:
+#         return {"errors": lexer.errors}
+
+#     try:
+#         parser = Parser(tokens)
+#         parser.parse(PREDICT_SET)
+#         return {"errors": []}
+#     except SyntaxError as e:
+#         token = tokens[parser.pos]
+#         return {
+#             "errors": [{
+#                 "message": str(e),
+#                 "line": token.line,
+#                 "col": token.column
+#             }]
+#         }
+
+# New -------------------------------------------------------------------
+@app.post("/parse", response_model=ParseResult)
+def parse_source(body: LexRequest):
+    lexer = Lexer(body.source)
+    tokens = lexer.scanTokens()
+
+    # If lexer has errors, return them immediately
+    if lexer.errors:
+        return {"errors": lexer.errors}
+
+    parser = Parser(tokens)
+    parser.parse()  # fills parser.errors
+
+    return {"errors": parser.errors}
+
+# ------------------------------------------------------------------------
