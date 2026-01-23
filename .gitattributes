@@ -1,0 +1,6 @@
+# Keep repo content in LF (best for Linux + consistent diffs)
+* text=auto eol=lf
+
+# Keep Windows runner scripts Windows-friendly
+*.bat text eol=crlf
+*.cmd text eol=crlf

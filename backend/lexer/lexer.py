@@ -88,6 +88,15 @@ class LexerError(Exception):
 #lexer class starts when called in api, sets all values to default at start / source/lexer body is source code
 class Lexer:
     def __init__(self, source: str):
+        
+        # Copy Paste Fix ---------------------------------------------------------------------
+        source = source.lstrip('\ufeff')              
+        source = source.replace('\r\n', '\n')         
+        source = source.replace('\r', '\n')           
+        source = source.replace('\u00a0', ' ')       
+        source = source.replace('\u200b', '')     
+        # ------------------------------------------------------------------------------------
+
         # Source = Program String LAHAT
         self.source = source
 
