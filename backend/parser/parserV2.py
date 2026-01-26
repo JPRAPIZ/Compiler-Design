@@ -54,7 +54,7 @@ class Parser:
         tok = self.tokens[pos]
         return self._norm_type(tok.tokenType)
 
-    # Checks if token is in predict set for that production
+    # Checks if tokne is in predict set for that production
     def in_predict(self, predict_list: list[str]) -> bool:
         return self.current_type in predict_list
 

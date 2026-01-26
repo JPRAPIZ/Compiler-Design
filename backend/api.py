@@ -130,12 +130,12 @@ def parse_source(body: LexRequest):
     lexer = Lexer(body.source)
     tokens = lexer.scanTokens()
 
-    # If lexer has errors, return them immediately
+
     if lexer.errors:
         return {"errors": lexer.errors}
 
     parser = Parser(tokens)
-    parser.parse()  # fills parser.errors
+    parser.parse()
 
     return {"errors": parser.errors}
 
