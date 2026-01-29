@@ -432,10 +432,10 @@ class Lexer:
         )
 
     def is_delim23(self, ch) -> bool:
-        # delim23 { + , > , < , = , ! , & , | , ) , ] , , , ; , whitespace }
+        # delim23 { + , > , < , = , ! , & , | , ) , ] , } , , , ; , whitespace }
         return (
             self.is_eof(ch)
-            or ch in ('+', '>', '<', '=', '!', '&', '|', ')', ']', ',', ';')
+            or ch in ('+', '>', '<', '=', '!', '&', '|', ')', ']', '}', ',', ';')
             or self.is_whitespace(ch)
         )
 
