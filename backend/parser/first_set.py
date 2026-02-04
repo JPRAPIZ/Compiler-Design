@@ -1,263 +1,135 @@
 FIRST_SET = {
-    "<program>": {
-        "blueprint", "roof", "tile", "glass", "brick", "wall", "beam", "field"},
-
+    "<program>": {"wall", "roof", "tile", "glass", "brick", "beam", "field"},
+    "<program_body>": {"wall", "tile", "glass", "brick", "beam", "field"},
+    "<program_body2>": {"id", "blueprint"},
     "<global>": {"roof", "λ"},
-
-    "<global_dec>": {"tile", "glass", "brick", "wall", "beam", "house", "cement"},
-
-    "<global_var>": {"tile", "glass", "brick", "wall", "beam"},
-
-    "<data_type>": {"tile", "glass", "brick", "wall", "beam"},
-
+    "<global_dec>": {"wall", "tile", "glass", "brick", "beam", "house", "cement"},
+    "<global_var>": {"wall", "tile", "glass", "brick", "beam"},
+    "<data_type>": {"tile", "glass", "brick", "beam"},
     "<global_end>": {"=", ",", "[", "λ"},
-
     "<global_init>": {"=", "λ"},
-
     "<global_mult>": {",", "λ"},
-
-    "<value>": {"tile_lit", "glass_lit", "brick_lit", "wall_lit", "solid", "fragile"},
-
+    "<value>": {"tile_lit", "glass_lit", "brick_lit", "solid", "fragile"},
     "<array_dec>": {"["},
-
     "<arr_size>": {"tile_lit", "]"},
-
     "<one_d_end>": {"=", "["},
-
     "<one_d_end2>": {"=", "[", "λ"},
-
     "<two_d_end>": {"=", "λ"},
-
-    "<elements>": {"tile_lit", "glass_lit", "brick_lit", "wall_lit", "solid", "fragile"},
-
+    "<elements>": {"tile_lit", "glass_lit", "brick_lit", "solid", "fragile"},
     "<mult_elem>": {",", "λ"},
-
     "<mult_elem2>": {",", "λ"},
-
+    "<global_wall_end>": {"=", ",", "[", "λ"},
+    "<global_wall_init>": {"=", "λ"},
+    "<global_mult_wall>": {",", "λ"},
+    "<wall_array>": {"["},
+    "<wall_size>": {"tile_lit", "]"},
+    "<wall_one_d_end>": {"=", "["},
+    "<wall_one_d_end2>": {"=", "[", "λ"},
+    "<wall_two_d_end>": {"=", "λ"},
+    "<wall_elem>": {"wall_lit"},
+    "<wall_mult_elem>": {",", "λ"},
+    "<wall_mult_elem2>": {",", "λ"},
     "<structure>": {"house"},
-
-    "<struct_type>": {"{", "id"},
-
+    "<struct_type>": {"id", "{"},
     "<struct_dec>": {"{"},
-
-    "<struct_members>": {"tile", "glass", "brick", "wall", "beam"},
-
-    "<data_type_dec>": {"tile", "glass", "brick", "wall", "beam"},
-
+    "<struct_members>": {"wall", "tile", "glass", "brick", "beam"},
+    "<data_type_dec>": {"wall", "tile", "glass", "brick", "beam"},
     "<array>": {"[", "λ"},
-
     "<array2>": {"[", "λ"},
-
-    "<mult_members>": {"tile", "glass", "brick", "wall", "beam", "λ"},
-
+    "<mult_members>": {"wall", "tile", "glass", "brick", "beam", "λ"},
     "<struct_id_end>": {"id", "λ"},
-
     "<struct_init>": {"=", "λ"},
-
-    "<struct_elem>": {
-        "{", "tile_lit", "glass_lit", "brick_lit", "wall_lit", "solid", "fragile"
-    },
-
-    "<struct_arr_elem>": {
-        "{", "tile_lit", "glass_lit", "brick_lit", "wall_lit", "solid", "fragile"
-    },
-
+    "<struct_elem>": {"{", "tile_lit", "glass_lit", "brick_lit", "solid", "fragile", "wall_lit"},
+    "<struct_value>": {"tile_lit", "glass_lit", "brick_lit", "solid", "fragile", "wall_lit"},
     "<mult_struct_elem>": {",", "λ"},
-
+    "<struct_arr_elem>": {"{", "tile_lit", "glass_lit", "brick_lit", "solid", "fragile", "wall_lit"},
+    "<struct_elements>": {"tile_lit", "glass_lit", "brick_lit", "solid", "fragile", "wall_lit"},
+    "<struct_mult_elem>": {",", "λ"},
+    "<struct_mult_elem2>": {",", "λ"},
     "<mult_struct_id>": {",", "λ"},
-
     "<struct_var>": {"id"},
-
     "<global_const>": {"cement"},
-
-    "<global_const_type>": {"tile", "glass", "brick", "wall", "beam", "house"},
-
+    "<global_const_type>": {"wall", "tile", "glass", "brick", "beam", "house"},
     "<global_const_end>": {"=", "["},
-
-    "<global_const_end2>": {"=", "["},
-
     "<global_mult_const>": {",", "λ"},
-
+    "<global_const_end2>": {"=", "["},
+    "<g_const_wall_end>": {"=", "["},
+    "<g_mult_const_wall>": {",", "λ"},
+    "<g_const_wall_end2>": {"=", "["},
     "<global_const_struct>": {",", "λ"},
-
-    "<function>": {"tile", "glass", "brick", "wall", "beam", "field", "λ"},
-
-    "<return_type>": {"tile", "glass", "brick", "wall", "beam", "field"},
-
-    "<param_list>": {"tile", "glass", "brick", "wall", "beam", "λ"},
-
+    "<return_type>": {"tile", "glass", "brick", "beam", "field"},
+    "<param_list>": {"wall", "tile", "glass", "brick", "beam", "λ"},
     "<mult_param>": {",", "λ"},
-
-    "<func_body>": {
-        "id", "tile", "glass", "brick", "wall", "beam", "house", "cement",
-        "++", "--", "write", "view", "if", "room", "for", "while", "do",
-        "crack", "mend", "home"
-    },
-
-    "<func_body2>": {
-        "id", "tile", "glass", "brick", "wall", "beam", "house", "cement",
-        "++", "--", "write", "view", "if", "room", "for", "while", "do",
-        "crack", "mend", "home", "λ"
-    },
-
-    "<local>": {"tile", "glass", "brick", "wall", "beam", "house", "cement"},
-
-    "<declaration>": {"tile", "glass", "brick", "wall", "beam", "house", "cement"},
-
-    "<variable>": {"tile", "glass", "brick", "wall", "beam"},
-
+    "<func_body>": {"wall", "id", "tile", "glass", "brick", "beam", "house", "cement", "++", "--", "write", "view", "if", "room", "for", "while", "do", "crack", "mend", "home"},
+    "<func_body2>": {"wall", "id", "tile", "glass", "brick", "beam", "house", "cement", "++", "--", "write", "view", "if", "room", "for", "while", "do", "crack", "mend", "home", "λ"},
+    "<local>": {"wall", "tile", "glass", "brick", "beam", "house", "cement"},
+    "<declaration>": {"wall", "tile", "glass", "brick", "beam", "house", "cement"},
+    "<variable>": {"wall", "tile", "glass", "brick", "beam"},
     "<var_end>": {"=", ",", "[", "λ"},
-
     "<initializer>": {"=", "λ"},
-
     "<mult_var>": {",", "λ"},
-
+    "<wall_end>": {"=", ",", "[", "λ"},
+    "<wall_initializer>": {"=", "λ"},
+    "<wall_init>": {"id", "(", "brick_lit", "wall_lit"},
+    "<wall_op>": {"+", "λ"},
+    "<mult_wall>": {",", "λ"},
     "<constant>": {"cement"},
-
-    "<const_type>": {"tile", "glass", "brick", "wall", "beam", "house"},
-
+    "<const_type>": {"wall", "tile", "glass", "brick", "beam", "house"},
     "<const_end>": {"=", "["},
-
-    "<const_end2>": {"=", "["},
-
     "<mult_const>": {",", "λ"},
-
+    "<const_wall_end>": {"=", "["},
     "<mult_const_struct>": {",", "λ"},
-
-    "<init_value>": {
-        "(", "id", "tile_lit", "glass_lit", "brick_lit", "wall_lit",
-        "solid", "fragile", "-", "++", "--", "!"
-    },
-
-    "<value_exp>": {
-        "(", "id", "tile_lit", "glass_lit", "brick_lit", "wall_lit",
-        "solid", "fragile", "-"
-    },
-
-    "<value_type>": {"id", "tile_lit", "glass_lit", "brick_lit", "wall_lit", "solid", "fragile"},
-
+    "<init_value>": {"id", "(", "tile_lit", "glass_lit", "brick_lit", "solid", "fragile", "-", "++", "--", "!"},
+    "<value_exp>": {"id", "(", "tile_lit", "glass_lit", "brick_lit", "solid", "fragile", "-"},
+    "<value_type>": {"id", "tile_lit", "glass_lit", "brick_lit", "solid", "fragile"},
     "<id_type>": {"(", "[", ".", "++", "--", "λ"},
-
     "<id_type2>": {"(", "[", ".", "++", "--", "λ"},
-
     "<arr_struct>": {"[", ".", "λ"},
-
     "<array_index>": {"[", "λ"},
-
     "<array_index2>": {"[", "λ"},
-
     "<struct_id>": {".", "λ"},
-
     "<func_call>": {"(", "λ"},
-
-    "<func_argu>": {
-        "(", "id", "tile_lit", "glass_lit", "brick_lit", "wall_lit",
-        "solid", "fragile", "-", "++", "--", "!", "λ"
-    },
-
+    "<func_argu>": {"id", "(", "tile_lit", "glass_lit", "brick_lit", "solid", "fragile", "wall_lit", "-", "++", "--", "!", "λ"},
     "<func_mult_call>": {",", "λ"},
-
     "<postfix_op>": {"++", "--", "λ"},
-
     "<unary_op>": {"++", "--"},
-
     "<group>": {"("},
-
-    "<negative_type>": {
-        "(", "id", "tile_lit", "glass_lit", "brick_lit", "wall_lit",
-        "solid", "fragile"
-    },
-
-    "<exp_op>": {
-        "-", "+", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=",
-        "&&", "||", "λ"
-    },
-
+    "<negative_type>": {"id", "(", "tile_lit", "glass_lit", "brick_lit", "solid", "fragile"},
+    "<exp_op>": {"+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "&&", "||", "λ"},
     "<prefix_op>": {"++", "--", "!"},
-
     "<id_val>": {"id"},
-
     "<id_type3>": {"[", ".", "λ"},
-
-    "<operator>": {
-        "-", "+", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=",
-        "&&", "||", "λ"
-    },
-
-    "<statement>": {
-        "id", "++", "--", "write", "view", "if", "room", "for", "while",
-        "do", "crack", "mend", "home"
-    },
-
+    "<operator>": {"+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "&&", "||"},
+    "<statement>": {"id", "++", "--", "write", "view", "if", "room", "for", "while", "do", "crack", "mend", "home"},
     "<io_statement>": {"write", "view"},
-
     "<write_argu>": {"id", "&"},
-
     "<mult_write_argu>": {",", "λ"},
-
     "<view_argu>": {",", "λ"},
-
     "<mult_view_argu>": {",", "λ"},
-
     "<assign_statement>": {"id", "++", "--"},
-
     "<id_type4>": {"(", "=", "[", ".", "++", "--", "+=", "-=", "*=", "/=", "%="},
-
+    "<assign_value>": {"id", "(", "tile_lit", "glass_lit", "brick_lit", "solid", "fragile", "wall_lit", "-", "++", "--", "!"},
     "<assign_op>": {"=", "+=", "-=", "*=", "/=", "%="},
-
     "<if_statement>": {"if"},
-
     "<else_statement>": {"else", "λ"},
-
     "<else_statement2>": {"{", "if"},
-
     "<switch_statement>": {"room"},
-
     "<switch_body>": {"door", "ground"},
-
+    "<mult_switch_body>": {"door", "ground", "λ"},
     "<case_exp>": {"(", "tile_lit", "brick_lit", "solid", "fragile", "-"},
-
     "<case_type>": {"(", "tile_lit", "brick_lit", "solid", "fragile", "-"},
-
     "<case_val>": {"tile_lit", "brick_lit", "solid", "fragile"},
-
     "<case_group>": {"("},
-
     "<case_negative>": {"(", "tile_lit", "brick_lit", "solid", "fragile"},
-
-    "<case_op>": {
-        "-", "+", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=",
-        "&&", "||", "λ"
-    },
-
-    "<case_body>": {
-        "{", "id", "++", "--", "write", "view", "if", "room", "for", "while",
-        "do", "crack", "mend", "home", "λ"
-    },
-
-    "<mult_smt>": {
-        "id", "++", "--", "write", "view", "if", "room", "for", "while",
-        "do", "crack", "mend", "home", "λ"
-    },
-
+    "<case_op>": {"+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "&&", "||", "λ"},
+    "<case_body>": {"id", "{", "++", "--", "write", "view", "if", "room", "for", "while", "do", "crack", "mend", "home", "λ"},
+    "<mult_smt>": {"id", "++", "--", "write", "view", "if", "room", "for", "while", "do", "crack", "mend", "home", "λ"},
     "<for_statement>": {"for"},
-
-    "<for_dec>": {"id", "tile", "glass", "brick", "wall", "beam", "λ"},
-
-    "<for_exp>": {
-        "(", "id", "tile_lit", "glass_lit", "brick_lit", "wall_lit",
-        "solid", "fragile", "-", "++", "--", "!", "λ"
-    },
-
+    "<for_dec>": {"id", "tile", "glass", "brick", "beam"},
     "<while_statement>": {"while"},
-
     "<dowhile_statement>": {"do"},
-
     "<break_statement>": {"crack"},
-
     "<continue_statement>": {"mend"},
-
-    "<return_statement>": {"home"},  # changed return to home
-
-    "<main_type>": {"tile", "glass", "brick", "beam", "field", "λ"},
+    "<return_statement>": {"home"},
+    "<home_value>": {"id", "(", "tile_lit", "glass_lit", "brick_lit", "solid", "fragile", "wall_lit", "-", "++", "--", "!"},
 }
