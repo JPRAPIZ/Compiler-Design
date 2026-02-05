@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import List, Dict, Any
 
 from parser.predict_set import PREDICT_SET
+from parser.follow_set import FOLLOW_SET
 
 class Parser:
     IGNORE_TYPES = ("space", "tab", "newline", "Single-Line Comment", "Multi-Line Comment")
@@ -114,68 +115,67 @@ class Parser:
         self.stop = True
 
     def filter_expected_by_context(self, expected: list[str], nt: str) -> list[str]:
+        """
+        Filter expected tokens based on parsing context using FOLLOW sets.
+        This ensures mathematically correct error messages based on grammar.
+        """
         if not self.context_stack:
             return expected
         
         context = self.context_stack[-1]
         base_nt = self._base_nt(nt)
         
-        context_filters = {
-            ('for_declaration', '<initializer>'): ['=', ';'],
-            ('for_declaration', '<var_end>'): ['=', ';'],
-            ('for_declaration', '<exp_op>'): [';'],
-            ('for_condition', '<exp_op>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('for_condition', '<id_type>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('for_condition', '<postfix_op>'): [';', '++', '--'],
-            ('for_condition', '<arr_struct>'): [';', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('for_increment', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('for_increment', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('for_increment', '<postfix_op>'): [')', '++', '--'],
-            ('for_increment', '<arr_struct>'): [')', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('if_condition', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('if_condition', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('if_condition', '<postfix_op>'): [')', '++', '--'],
-            ('if_condition', '<arr_struct>'): [')', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('while_condition', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('while_condition', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('while_condition', '<postfix_op>'): [')', '++', '--'],
-            ('while_condition', '<arr_struct>'): [')', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('dowhile_condition', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('dowhile_condition', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('dowhile_condition', '<postfix_op>'): [')', '++', '--'],
-            ('dowhile_condition', '<arr_struct>'): [')', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('switch_condition', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('switch_condition', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('array_index', '<exp_op>'): [']', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('array_index', '<id_type>'): [']', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('array_index', '<postfix_op>'): [']', '++', '--'],
-            ('array_index', '<arr_struct>'): [']', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('func_args', '<exp_op>'): [')', ',', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('func_args', '<func_mult_call>'): [')', ','],
-            ('func_args', '<id_type>'): [')', ',', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('func_args', '<postfix_op>'): [')', ',', '++', '--'],
-            ('func_args', '<arr_struct>'): [')', ',', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('assignment', '<exp_op>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('assignment', '<id_type>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('assignment', '<postfix_op>'): [';', '++', '--'],
-            ('assignment', '<arr_struct>'): [';', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('assignment', '<id_type4>'): [';', '(', '=', '[', '.', '++', '--', '+=', '-=', '*=', '/=', '%='],
-            ('var_declaration', '<initializer>'): ['=', ';', ','],
-            ('var_declaration', '<var_end>'): ['=', ';', ',', '['],
-            ('var_declaration', '<exp_op>'): [';', ',', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('return_statement', '<exp_op>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('return_statement', '<id_type>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
-            ('group_expr', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
-            ('group_expr', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+        # Get FOLLOW set for this non-terminal
+        follow_tokens = FOLLOW_SET.get(base_nt, set())
+        if not follow_tokens:
+            return expected  # No FOLLOW set, return all
+        
+        # Context-specific filtering: Select which FOLLOW tokens are valid
+        context_follow_map = {
+            # FOR LOOP - only allow specific delimiters from FOLLOW set
+            'for_declaration': {';'},           # After declaration, only semicolon
+            'for_condition': {';'},             # After condition, only semicolon  
+            'for_increment': {')'},             # After increment, only closing paren
+            
+            # CONDITIONALS - only allow closing paren
+            'if_condition': {')'},
+            'while_condition': {')'},
+            'dowhile_condition': {')'},
+            'switch_condition': {')'},
+            
+            # ARRAY INDEX - only allow closing bracket
+            'array_index': {']'},
+            
+            # FUNCTION ARGUMENTS - allow paren and comma
+            'func_args': {')', ','},
+            
+            # VARIABLE DECLARATION - allow semicolon and comma (for multiple vars)
+            'var_declaration': {';', ','},
+            
+            # ASSIGNMENT - only semicolon
+            'assignment': {';'},
+            
+            # RETURN STATEMENT - only semicolon
+            'return_statement': {';'},
+            
+            # GROUP EXPRESSION - only closing paren
+            'group_expr': {')'},
         }
         
-        filter_key = (context, base_nt)
-        if filter_key in context_filters:
-            valid_tokens = set(context_filters[filter_key])
-            filtered = [t for t in expected if t in valid_tokens]
-            return filtered if filtered else expected
+        # Get valid ending tokens for this context
+        valid_endings = context_follow_map.get(context, follow_tokens)
         
-        return expected
+        # Always allow operators (they extend expressions)
+        operators = {'+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'}
+        
+        # Combine: valid FOLLOW endings + operators that are in the original expected
+        valid_tokens = valid_endings | operators
+        
+        # Filter expected tokens
+        filtered = [t for t in expected if t in valid_tokens and t in follow_tokens or t in operators]
+        
+        # Return filtered list, or all if filtering removed everything (safety)
+        return filtered if filtered else expected
 
     # ---------------- entry ----------------
     def parse(self, _predict_set=None):
@@ -1584,7 +1584,9 @@ class Parser:
             if self.stop: return
             self.match_token('id')
             if self.stop: return
+            self.context_stack.append('var_declaration')
             self.parse_var_end()
+            self.context_stack.pop()
             if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<variable_1>']):  # prod 130
@@ -1592,7 +1594,9 @@ class Parser:
             if self.stop: return
             self.match_token('id')
             if self.stop: return
+            self.context_stack.append('var_declaration')
             self.parse_wall_end()
+            self.context_stack.pop()
             if self.stop: return
             return
         self.syntax_error('<variable>')
@@ -2405,7 +2409,9 @@ class Parser:
             if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<statement_1>']):  # prod 221
+            self.context_stack.append('statement')
             self.parse_assign_statement()
+            self.context_stack.pop()
             if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<statement_2>']):  # prod 222
