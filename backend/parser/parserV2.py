@@ -17,6 +17,7 @@ class Parser:
         self.current_lexeme = "$"
         self.current_line = 1
         self.current_col = 1
+        self.context_stack = []  # Track parsing context for better error messages
 
         self._update_current()
 
@@ -97,6 +98,7 @@ class Parser:
 
     def syntax_error(self, nt: str):
         exp = self.expected_for(nt)
+        exp = self.filter_expected_by_context(exp, nt)  # Filter by context
         self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {exp}")
 
     def _add_error(self, msg: str):
@@ -110,6 +112,70 @@ class Parser:
             "end_col": self.current_col + max(1, len(str(self.current_lexeme))),
         })
         self.stop = True
+
+    def filter_expected_by_context(self, expected: list[str], nt: str) -> list[str]:
+        if not self.context_stack:
+            return expected
+        
+        context = self.context_stack[-1]
+        base_nt = self._base_nt(nt)
+        
+        context_filters = {
+            ('for_declaration', '<initializer>'): ['=', ';'],
+            ('for_declaration', '<var_end>'): ['=', ';'],
+            ('for_declaration', '<exp_op>'): [';'],
+            ('for_condition', '<exp_op>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('for_condition', '<id_type>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('for_condition', '<postfix_op>'): [';', '++', '--'],
+            ('for_condition', '<arr_struct>'): [';', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('for_increment', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('for_increment', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('for_increment', '<postfix_op>'): [')', '++', '--'],
+            ('for_increment', '<arr_struct>'): [')', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('if_condition', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('if_condition', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('if_condition', '<postfix_op>'): [')', '++', '--'],
+            ('if_condition', '<arr_struct>'): [')', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('while_condition', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('while_condition', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('while_condition', '<postfix_op>'): [')', '++', '--'],
+            ('while_condition', '<arr_struct>'): [')', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('dowhile_condition', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('dowhile_condition', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('dowhile_condition', '<postfix_op>'): [')', '++', '--'],
+            ('dowhile_condition', '<arr_struct>'): [')', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('switch_condition', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('switch_condition', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('array_index', '<exp_op>'): [']', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('array_index', '<id_type>'): [']', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('array_index', '<postfix_op>'): [']', '++', '--'],
+            ('array_index', '<arr_struct>'): [']', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('func_args', '<exp_op>'): [')', ',', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('func_args', '<func_mult_call>'): [')', ','],
+            ('func_args', '<id_type>'): [')', ',', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('func_args', '<postfix_op>'): [')', ',', '++', '--'],
+            ('func_args', '<arr_struct>'): [')', ',', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('assignment', '<exp_op>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('assignment', '<id_type>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('assignment', '<postfix_op>'): [';', '++', '--'],
+            ('assignment', '<arr_struct>'): [';', '[', '.', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('assignment', '<id_type4>'): [';', '(', '=', '[', '.', '++', '--', '+=', '-=', '*=', '/=', '%='],
+            ('var_declaration', '<initializer>'): ['=', ';', ','],
+            ('var_declaration', '<var_end>'): ['=', ';', ',', '['],
+            ('var_declaration', '<exp_op>'): [';', ',', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('return_statement', '<exp_op>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('return_statement', '<id_type>'): [';', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+            ('group_expr', '<exp_op>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'],
+            ('group_expr', '<id_type>'): [')', '+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||', '(', '[', '.', '++', '--'],
+        }
+        
+        filter_key = (context, base_nt)
+        if filter_key in context_filters:
+            valid_tokens = set(context_filters[filter_key])
+            filtered = [t for t in expected if t in valid_tokens]
+            return filtered if filtered else expected
+        
+        return expected
 
     # ---------------- entry ----------------
     def parse(self, _predict_set=None):
@@ -2007,7 +2073,9 @@ class Parser:
         if self.in_predict(PREDICT_SET['<array_index>']):  # prod 178
             self.match_token('[')
             if self.stop: return
+            self.context_stack.append('array_index')
             self.parse_init_value()
+            self.context_stack.pop()
             if self.stop: return
             self.match_token(']')
             if self.stop: return
@@ -2027,7 +2095,9 @@ class Parser:
         if self.in_predict(PREDICT_SET['<array_index2>']):  # prod 180
             self.match_token('[')
             if self.stop: return
+            self.context_stack.append('array_index')
             self.parse_init_value()
+            self.context_stack.pop()
             if self.stop: return
             self.match_token(']')
             if self.stop: return
@@ -2158,7 +2228,9 @@ class Parser:
         if self.in_predict(PREDICT_SET['<group>']):  # prod 196
             self.match_token('(')
             if self.stop: return
+            self.context_stack.append('if_condition')
             self.parse_init_value()
+            self.context_stack.pop()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2650,7 +2722,9 @@ class Parser:
             if self.stop: return
             self.match_token('(')
             if self.stop: return
+            self.context_stack.append('switch_condition')
             self.parse_init_value()
+            self.context_stack.pop()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2857,15 +2931,21 @@ class Parser:
             if self.stop: return
             self.match_token('(')
             if self.stop: return
+            self.context_stack.append('for_declaration')
             self.parse_for_dec()
+            self.context_stack.pop()
             if self.stop: return
             self.match_token(';')
             if self.stop: return
+            self.context_stack.append('for_condition')
             self.parse_init_value()
+            self.context_stack.pop()
             if self.stop: return
             self.match_token(';')
             if self.stop: return
+            self.context_stack.append('for_increment')
             self.parse_init_value()
+            self.context_stack.pop()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2937,7 +3017,9 @@ class Parser:
             if self.stop: return
             self.match_token('(')
             if self.stop: return
+            self.context_stack.append('dowhile_condition')
             self.parse_init_value()
+            self.context_stack.pop()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
