@@ -435,7 +435,7 @@ class Lexer:
         # delim23 { + , > , < , = , ! , & , | , ) , ] , , , ; , whitespace }
         return (
             self.is_eof(ch)
-            or ch in ('+', '>', '<', '=', '!', '&', '|', ')', ']', ',', ';')
+            or ch in ('+', '>', '<', '=', '!', '&', '|', ')', ']', ',', ';', '}')
             or self.is_whitespace(ch)
         )
 
