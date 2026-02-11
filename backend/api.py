@@ -7,11 +7,8 @@ from lexer.lexer import Lexer
 from lexer.tokens import Token
 
 # change this for another file
-from parser.parserV2 import Parser
+from parser.parserV5_LL1_pure_latest import Parser
 # from parser.predict_set import PREDICT_SET
-
-
-
 
 class LexRequest(BaseModel):
     source: str
@@ -101,28 +98,6 @@ def lex_source(body: LexRequest):
         tokens=token_responses,
         errors=error_responses
     )
-
-# @app.post("/parse")
-# def parse_source(body: LexRequest):
-#     lexer = Lexer(body.source)
-#     tokens = lexer.scanTokens()
-
-#     if lexer.errors:
-#         return {"errors": lexer.errors}
-
-#     try:
-#         parser = Parser(tokens)
-#         parser.parse(PREDICT_SET)
-#         return {"errors": []}
-#     except SyntaxError as e:
-#         token = tokens[parser.pos]
-#         return {
-#             "errors": [{
-#                 "message": str(e),
-#                 "line": token.line,
-#                 "col": token.column
-#             }]
-#         }
 
 # New -------------------------------------------------------------------
 @app.post("/parse", response_model=ParseResult)
