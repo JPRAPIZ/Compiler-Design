@@ -13,12 +13,14 @@ class Parser:
         self.index = 0
         self.stop = False
         self.errors: List[Dict[str, Any]] = []
+        
+        # Track parsing context for better error filtering
+        self.context_stack = []
 
         self.current_type = "EOF"
         self.current_lexeme = "$"
         self.current_line = 1
         self.current_col = 1
-        self.context_stack = []  # Track parsing context for better error messages
 
         self._update_current()
 
@@ -56,7 +58,16 @@ class Parser:
         tok = self.tokens[pos]
         return self._norm_type(tok.tokenType)
 
-    # Checks if token is in predict set for that production
+    # ---------------- context tracking ----------------
+    def _push_context(self, context_type: str):
+        """Push a parsing context onto the stack."""
+        self.context_stack.append(context_type)
+    
+    def _pop_context(self):
+        """Pop a parsing context from the stack."""
+        if self.context_stack:
+            self.context_stack.pop()
+    
     def in_predict(self, predict_list: list[str]) -> bool:
         return self.current_type in predict_list
 
@@ -86,21 +97,19 @@ class Parser:
 
         return key
 
-    def expected_for(self, nt: str) -> list[str]:
-        base = self._base_nt(nt)
-        expected: list[str] = []
-        for k, lst in PREDICT_SET.items():
-            if self._base_nt(k) == base:
-                for t in lst:
-                    if t not in expected:
-                        expected.append(t)
-        return expected
-
-
     def syntax_error(self, nt: str):
-        exp = self.expected_for(nt)
-        exp = self.filter_expected_by_context(exp, nt)  # Filter by context
-        self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {exp}")
+        """Generate error with correct expected tokens from PREDICT sets"""
+        base = self._base_nt(nt)
+        expected = set()
+        
+        # Collect all PREDICT tokens for this non-terminal
+        for key in PREDICT_SET:
+            if self._base_nt(key) == base:
+                expected.update(PREDICT_SET[key])
+        
+        # Sort for consistent output
+        expected = sorted(list(expected))
+        self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {expected}")
 
     def _add_error(self, msg: str):
         self.errors.append({
@@ -114,57 +123,6 @@ class Parser:
         })
         self.stop = True
 
-    def filter_expected_by_context(self, expected: list[str], nt: str) -> list[str]:
-        """
-        Filter expected tokens based on parsing context using FOLLOW sets.
-        """
-        if not self.context_stack:
-            return expected
-        
-        context = self.context_stack[-1]
-        base_nt = self._base_nt(nt)
-    
-        # Get FOLLOW set for this non-terminal
-        follow_tokens = FOLLOW_SET.get(base_nt, set())
-        if not follow_tokens:
-            return expected
-        
-        # Operators that can continue expressions
-        operators = {'+', '-', '*', '/', '%', '<', '<=', '>', '>=', '==', '!=', '&&', '||'}
-        
-        # Special: <exp_op> and <assign_exp> should only show operators
-        if base_nt in ['<exp_op>', '<assign_exp>']:
-            filtered = [t for t in expected if t in operators]
-            return filtered if filtered else expected
-
-        # Context-specific delimiter mapping
-        context_delimiters = {
-            'for_declaration': {';'}, # implemented
-            'for_condition': {';'}, # implemented
-            'for_increment': {')'}, # implemented
-            'if_condition': {')'}, # implemented
-            'while_condition': {')'}, # implemented
-            'dowhile_condition': {')'}, # implemented
-            'switch_condition': {')'},
-            'array_index': {']'}, # implemented
-            'func_args': {')', ','}, # implemented
-            'var_declaration': {';', ','}, # implemented
-            'assignment': {';'}, # implemented
-            'return_statement': {';'}, # implemented
-            'group_expr': {')'}, # implemented
-        }
-        
-        valid_delimiters = context_delimiters.get(context, follow_tokens)
-        valid_from_follow = valid_delimiters & follow_tokens
-        valid_operators = operators & follow_tokens
-        valid_tokens = valid_from_follow | valid_operators
-        
-        # Filter and maintain order from PREDICT_SET (which is already sorted)
-        filtered = [t for t in expected if t in valid_tokens]
-    
-        return filtered if filtered else expected
-
-    # ---------------- entry ----------------
     def parse(self, _predict_set=None):
         self.parse_program()
 
@@ -174,7 +132,6 @@ class Parser:
         return self.errors
 
     # ---------------- production parsing methods ----------------
-
 
     # Production 1: <program>
     def parse_program(self):
@@ -1435,9 +1392,10 @@ class Parser:
         if self.in_predict(PREDICT_SET['<initializer>']):  # prod 133
             self.match_token('=')
             if self.stop: return
-            self.context_stack.append('var_declaration')
+            # ADD CONTEXT TRACKING
+            self._push_context("assignment_rhs")
             self.parse_expression()
-            self.context_stack.pop()
+            self._pop_context()
             if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<initializer_1>']):  # prod 134
@@ -1475,11 +1433,11 @@ class Parser:
         elif self.in_predict(PREDICT_SET['<expression_1>']):  # prod 138
             self.match_token('(')
             if self.stop: return
-            self.context_stack.append('group_expr')
             self.parse_expression()
-            self.context_stack.pop()
             if self.stop: return
             self.match_token(')')
+            if self.stop: return
+            self.parse_postfix_op()
             if self.stop: return
             self.parse_exp_op()
             if self.stop: return
@@ -1493,7 +1451,7 @@ class Parser:
         elif self.in_predict(PREDICT_SET['<expression_3>']):  # prod 140
             self.parse_prefix_op()
             if self.stop: return
-            self.parse_id_val()
+            self.parse_prefix_exp()
             if self.stop: return
             self.parse_exp_op()
             if self.stop: return
@@ -1560,9 +1518,7 @@ class Parser:
         if self.in_predict(PREDICT_SET['<array_index>']):  # prod 149
             self.match_token('[')
             if self.stop: return
-            self.context_stack.append('array_index')
             self.parse_expression()
-            self.context_stack.pop()
             if self.stop: return
             self.match_token(']')
             if self.stop: return
@@ -1579,9 +1535,7 @@ class Parser:
         if self.in_predict(PREDICT_SET['<array_index2>']):  # prod 151
             self.match_token('[')
             if self.stop: return
-            self.context_stack.append('array_index')
             self.parse_expression()
-            self.context_stack.pop()
             if self.stop: return
             self.match_token(']')
             if self.stop: return
@@ -1624,11 +1578,12 @@ class Parser:
     def parse_func_argu(self):
         if self.stop: return
         if self.in_predict(PREDICT_SET['<func_argu>']):  # prod 157
-            self.context_stack.append('func_args')
+            # ADD CONTEXT TRACKING
+            self._push_context("func_args")
             self.parse_assign_rhs()
-            self.context_stack.pop()
             if self.stop: return
             self.parse_func_mult_call()
+            self._pop_context()
             if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<func_argu_1>']):  # prod 158
@@ -1641,9 +1596,7 @@ class Parser:
         if self.in_predict(PREDICT_SET['<func_mult_call>']):  # prod 159
             self.match_token(',')
             if self.stop: return
-            self.context_stack.append('func_args')
             self.parse_assign_rhs()
-            self.context_stack.pop()
             if self.stop: return
             self.parse_func_mult_call()
             if self.stop: return
@@ -1702,10 +1655,26 @@ class Parser:
             return
         self.syntax_error('<prefix_op>')
 
-    # Production 169: <id_val>
+    # Production 169-170: <prefix_exp>
+    def parse_prefix_exp(self):
+        if self.stop: return
+        if self.in_predict(PREDICT_SET['<prefix_exp>']): # prod 169
+            self.match_token('(')
+            if self.stop: return
+            self.parse_expression()
+            if self.stop: return
+            self.match_token(')')
+            if self.stop: return
+            return
+        elif self.in_predict(PREDICT_SET['<prefix_exp_1>']): # prod 170
+            self.parse_id_val()
+            if self.stop: return
+            return
+        
+    # Production 171: <id_val>
     def parse_id_val(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<id_val>']):  # prod 169
+        if self.in_predict(PREDICT_SET['<id_val>']):  # prod 171
             self.match_token('id')
             if self.stop: return
             self.parse_id_type3()
@@ -1713,110 +1682,110 @@ class Parser:
             return
         self.syntax_error('<id_val>')
 
-    # Productions 170-172: <id_type3>
+    # Productions 172-174: <id_type3>
     def parse_id_type3(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<id_type3>']):  # prod 170
+        if self.in_predict(PREDICT_SET['<id_type3>']):  # prod 172
             self.parse_array_index()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<id_type3_1>']):  # prod 171
+        elif self.in_predict(PREDICT_SET['<id_type3_1>']):  # prod 173
             self.parse_struct_id()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<id_type3_2>']):  # prod 172
+        elif self.in_predict(PREDICT_SET['<id_type3_2>']):  # prod 174
             return
         self.syntax_error('<id_type3>')
 
-    # Productions 173-185: <operator>
+    # Productions 175-187: <operator>
     def parse_operator(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<operator>']):  # prod 173
+        if self.in_predict(PREDICT_SET['<operator>']):  # prod 175
             self.match_token('+')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_1>']):  # prod 174
+        elif self.in_predict(PREDICT_SET['<operator_1>']):  # prod 176
             self.match_token('-')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_2>']):  # prod 175
+        elif self.in_predict(PREDICT_SET['<operator_2>']):  # prod 177
             self.match_token('*')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_3>']):  # prod 176
+        elif self.in_predict(PREDICT_SET['<operator_3>']):  # prod 178
             self.match_token('/')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_4>']):  # prod 177
+        elif self.in_predict(PREDICT_SET['<operator_4>']):  # prod 179
             self.match_token('%')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_5>']):  # prod 178
+        elif self.in_predict(PREDICT_SET['<operator_5>']):  # prod 180
             self.match_token('<')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_6>']):  # prod 179
+        elif self.in_predict(PREDICT_SET['<operator_6>']):  # prod 181
             self.match_token('<=')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_7>']):  # prod 180
+        elif self.in_predict(PREDICT_SET['<operator_7>']):  # prod 182
             self.match_token('>')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_8>']):  # prod 181
+        elif self.in_predict(PREDICT_SET['<operator_8>']):  # prod 183
             self.match_token('>=')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_9>']):  # prod 182
+        elif self.in_predict(PREDICT_SET['<operator_9>']):  # prod 184
             self.match_token('==')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_10>']):  # prod 183
+        elif self.in_predict(PREDICT_SET['<operator_10>']):  # prod 185
             self.match_token('!=')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_11>']):  # prod 184
+        elif self.in_predict(PREDICT_SET['<operator_11>']):  # prod 186
             self.match_token('&&')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<operator_12>']):  # prod 185
+        elif self.in_predict(PREDICT_SET['<operator_12>']):  # prod 187
             self.match_token('||')
             if self.stop: return
             return
         self.syntax_error('<operator>')
 
-    # Productions 186-187: <wall_end>
+    # Productions 188-189: <wall_end>
     def parse_wall_end(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<wall_end>']):  # prod 186
+        if self.in_predict(PREDICT_SET['<wall_end>']):  # prod 188
             self.parse_wall_initializer()
             if self.stop: return
             self.parse_mult_wall()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<wall_end_1>']):  # prod 187
+        elif self.in_predict(PREDICT_SET['<wall_end_1>']):  # prod 189
             self.parse_wall_array()
             if self.stop: return
             return
         self.syntax_error('<wall_end>')
 
-    # Productions 188-189: <wall_initializer>
+    # Productions 190-191: <wall_initializer>
     def parse_wall_initializer(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<wall_initializer>']):  # prod 188
+        if self.in_predict(PREDICT_SET['<wall_initializer>']):  # prod 190
             self.match_token('=')
             if self.stop: return
             self.parse_wall_init()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<wall_initializer_1>']):  # prod 189
+        elif self.in_predict(PREDICT_SET['<wall_initializer_1>']):  # prod 191
             return
         self.syntax_error('<wall_initializer>')
 
-    # Productions 190-192: <wall_init>
+    # Productions 192-194: <wall_init>
     def parse_wall_init(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<wall_init>']):  # prod 190
+        if self.in_predict(PREDICT_SET['<wall_init>']):  # prod 192
             self.match_token('(')
             if self.stop: return
             self.parse_wall_init()
@@ -1826,13 +1795,13 @@ class Parser:
             self.parse_wall_op()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<wall_init_1>']):  # prod 191
+        elif self.in_predict(PREDICT_SET['<wall_init_1>']):  # prod 193
             self.match_token('wall_lit')
             if self.stop: return
             self.parse_wall_op()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<wall_init_2>']):  # prod 192
+        elif self.in_predict(PREDICT_SET['<wall_init_2>']):  # prod 194
             self.match_token('id')
             if self.stop: return
             self.parse_id_type()
@@ -1842,23 +1811,23 @@ class Parser:
             return
         self.syntax_error('<wall_init>')
 
-    # Productions 193-194: <wall_op>
+    # Productions 195-196: <wall_op>
     def parse_wall_op(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<wall_op>']):  # prod 193
+        if self.in_predict(PREDICT_SET['<wall_op>']):  # prod 195
             self.match_token('+')
             if self.stop: return
             self.parse_wall_init()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<wall_op_1>']):  # prod 194
+        elif self.in_predict(PREDICT_SET['<wall_op_1>']):  # prod 196
             return
         self.syntax_error('<wall_op>')
 
-    # Productions 195-196: <mult_wall>
+    # Productions 197-198: <mult_wall>
     def parse_mult_wall(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<mult_wall>']):  # prod 195
+        if self.in_predict(PREDICT_SET['<mult_wall>']):  # prod 197
             self.match_token(',')
             if self.stop: return
             self.match_token('id')
@@ -1868,14 +1837,14 @@ class Parser:
             self.parse_mult_wall()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<mult_wall_1>']):  # prod 196
+        elif self.in_predict(PREDICT_SET['<mult_wall_1>']):  # prod 198
             return
         self.syntax_error('<mult_wall>')
 
-    # Production 197: <constant>
+    # Production 199: <constant>
     def parse_constant(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<constant>']):  # prod 197
+        if self.in_predict(PREDICT_SET['<constant>']):  # prod 199
             self.match_token('cement')
             if self.stop: return
             self.parse_const_type()
@@ -1883,10 +1852,10 @@ class Parser:
             return
         self.syntax_error('<constant>')
 
-    # Productions 198-200: <const_type>
+    # Productions 200-202: <const_type>
     def parse_const_type(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<const_type>']):  # prod 198
+        if self.in_predict(PREDICT_SET['<const_type>']):  # prod 200
             self.parse_data_type()
             if self.stop: return
             self.match_token('id')
@@ -1894,7 +1863,7 @@ class Parser:
             self.parse_const_end()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<const_type_1>']):  # prod 199
+        elif self.in_predict(PREDICT_SET['<const_type_1>']):  # prod 201
             self.match_token('wall')
             if self.stop: return
             self.match_token('id')
@@ -1902,7 +1871,7 @@ class Parser:
             self.parse_const_wall_end()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<const_type_2>']):  # prod 200
+        elif self.in_predict(PREDICT_SET['<const_type_2>']):  # prod 202
             self.match_token('house')
             if self.stop: return
             self.match_token('id')
@@ -1922,10 +1891,10 @@ class Parser:
             return
         self.syntax_error('<const_type>')
 
-    # Productions 201-202: <const_end>
+    # Productions 203-204: <const_end>
     def parse_const_end(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<const_end>']):  # prod 201
+        if self.in_predict(PREDICT_SET['<const_end>']):  # prod 203
             self.match_token('=')
             if self.stop: return
             self.parse_expression()
@@ -1933,7 +1902,7 @@ class Parser:
             self.parse_mult_const()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<const_end_1>']):  # prod 202
+        elif self.in_predict(PREDICT_SET['<const_end_1>']):  # prod 204
             self.match_token('[')
             if self.stop: return
             self.match_token('tile_lit')
@@ -1945,10 +1914,10 @@ class Parser:
             return
         self.syntax_error('<const_end>')
 
-    # Productions 203-204: <mult_const>
+    # Productions 205-206: <mult_const>
     def parse_mult_const(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<mult_const>']):  # prod 203
+        if self.in_predict(PREDICT_SET['<mult_const>']):  # prod 205
             self.match_token(',')
             if self.stop: return
             self.match_token('id')
@@ -1960,14 +1929,14 @@ class Parser:
             self.parse_mult_const()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<mult_const_1>']):  # prod 204
+        elif self.in_predict(PREDICT_SET['<mult_const_1>']):  # prod 206
             return
         self.syntax_error('<mult_const>')
 
-    # Productions 205-206: <const_wall_end>
+    # Productions 207-208: <const_wall_end>
     def parse_const_wall_end(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<const_wall_end>']):  # prod 205
+        if self.in_predict(PREDICT_SET['<const_wall_end>']):  # prod 207
             self.match_token('=')
             if self.stop: return
             self.parse_wall_init()
@@ -1975,7 +1944,7 @@ class Parser:
             self.parse_mult_wall()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<const_wall_end_1>']):  # prod 206
+        elif self.in_predict(PREDICT_SET['<const_wall_end_1>']):  # prod 208
             self.match_token('[')
             if self.stop: return
             self.match_token('tile_lit')
@@ -1987,10 +1956,10 @@ class Parser:
             return
         self.syntax_error('<const_wall_end>')
 
-    # Productions 207-208: <mult_const_struct>
+    # Productions 209-210: <mult_const_struct>
     def parse_mult_const_struct(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<mult_const_struct>']):  # prod 207
+        if self.in_predict(PREDICT_SET['<mult_const_struct>']):  # prod 209
             self.match_token(',')
             if self.stop: return
             self.match_token('id')
@@ -2006,59 +1975,59 @@ class Parser:
             self.parse_mult_const_struct()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<mult_const_struct_1>']):  # prod 208
+        elif self.in_predict(PREDICT_SET['<mult_const_struct_1>']):  # prod 210
             return
         self.syntax_error('<mult_const_struct>')
 
-    # Productions 209-218: <statement>
+    # Productions 211-220: <statement>
     def parse_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<statement>']):  # prod 209
+        if self.in_predict(PREDICT_SET['<statement>']):  # prod 211
             self.parse_io_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<statement_1>']):  # prod 210
+        elif self.in_predict(PREDICT_SET['<statement_1>']):  # prod 212
             self.parse_assign_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<statement_2>']):  # prod 211
+        elif self.in_predict(PREDICT_SET['<statement_2>']):  # prod 213
             self.parse_if_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<statement_3>']):  # prod 212
+        elif self.in_predict(PREDICT_SET['<statement_3>']):  # prod 214
             self.parse_switch_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<statement_4>']):  # prod 213
+        elif self.in_predict(PREDICT_SET['<statement_4>']):  # prod 215
             self.parse_for_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<statement_5>']):  # prod 214
+        elif self.in_predict(PREDICT_SET['<statement_5>']):  # prod 216
             self.parse_while_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<statement_6>']):  # prod 215
+        elif self.in_predict(PREDICT_SET['<statement_6>']):  # prod 217
             self.parse_dowhile_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<statement_7>']):  # prod 216
+        elif self.in_predict(PREDICT_SET['<statement_7>']):  # prod 218
             self.parse_break_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<statement_8>']):  # prod 217
+        elif self.in_predict(PREDICT_SET['<statement_8>']):  # prod 219
             self.parse_continue_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<statement_9>']):  # prod 218
+        elif self.in_predict(PREDICT_SET['<statement_9>']):  # prod 220
             self.parse_return_statement()
             if self.stop: return
             return
         self.syntax_error('<statement>')
 
-    # Productions 219-220: <io_statement>
+    # Productions 221-222: <io_statement>
     def parse_io_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<io_statement>']):  # prod 219
+        if self.in_predict(PREDICT_SET['<io_statement>']):  # prod 221
             self.match_token('write')
             if self.stop: return
             self.match_token('(')
@@ -2074,7 +2043,7 @@ class Parser:
             self.match_token(';')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<io_statement_1>']):  # prod 220
+        elif self.in_predict(PREDICT_SET['<io_statement_1>']):  # prod 222
             self.match_token('view')
             if self.stop: return
             self.match_token('(')
@@ -2090,10 +2059,10 @@ class Parser:
             return
         self.syntax_error('<io_statement>')
 
-    # Productions 221-222: <write_argu>
+    # Productions 223-224: <write_argu>
     def parse_write_argu(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<write_argu>']):  # prod 221
+        if self.in_predict(PREDICT_SET['<write_argu>']):  # prod 223
             self.match_token('&')
             if self.stop: return
             self.parse_id_val()
@@ -2101,7 +2070,7 @@ class Parser:
             self.parse_mult_write_argu()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<write_argu_1>']):  # prod 222
+        elif self.in_predict(PREDICT_SET['<write_argu_1>']):  # prod 224
             self.parse_id_val()
             if self.stop: return
             self.parse_mult_write_argu()
@@ -2109,23 +2078,23 @@ class Parser:
             return
         self.syntax_error('<write_argu>')
 
-    # Productions 223-224: <mult_write_argu>
+    # Productions 225-226: <mult_write_argu>
     def parse_mult_write_argu(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<mult_write_argu>']):  # prod 223
+        if self.in_predict(PREDICT_SET['<mult_write_argu>']):  # prod 225
             self.match_token(',')
             if self.stop: return
             self.parse_write_argu()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<mult_write_argu_1>']):  # prod 224
+        elif self.in_predict(PREDICT_SET['<mult_write_argu_1>']):  # prod 226
             return
         self.syntax_error('<mult_write_argu>')
 
-    # Productions 225-226: <view_argu>
+    # Productions 227-228: <view_argu>
     def parse_view_argu(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<view_argu>']):  # prod 225
+        if self.in_predict(PREDICT_SET['<view_argu>']):  # prod 227
             self.match_token(',')
             if self.stop: return
             self.parse_assign_rhs()
@@ -2133,25 +2102,25 @@ class Parser:
             self.parse_mult_view_argu()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<view_argu_1>']):  # prod 226
+        elif self.in_predict(PREDICT_SET['<view_argu_1>']):  # prod 228
             return
         self.syntax_error('<view_argu>')
 
-    # Productions 227-228: <mult_view_argu>
+    # Productions 229-230: <mult_view_argu>
     def parse_mult_view_argu(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<mult_view_argu>']):  # prod 227
+        if self.in_predict(PREDICT_SET['<mult_view_argu>']):  # prod 229
             self.parse_view_argu()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<mult_view_argu_1>']):  # prod 228
+        elif self.in_predict(PREDICT_SET['<mult_view_argu_1>']):  # prod 230
             return
         self.syntax_error('<mult_view_argu>')
 
-    # Productions 229-230: <assign_statement>
+    # Productions 231-232: <assign_statement>
     def parse_assign_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<assign_statement>']):  # prod 229
+        if self.in_predict(PREDICT_SET['<assign_statement>']):  # prod 231
             self.parse_unary_op()
             if self.stop: return
             self.match_token('id')
@@ -2159,7 +2128,7 @@ class Parser:
             self.match_token(';')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<assign_statement_1>']):  # prod 230
+        elif self.in_predict(PREDICT_SET['<assign_statement_1>']):  # prod 232
             self.match_token('id')
             if self.stop: return
             self.parse_id_type4()
@@ -2169,10 +2138,10 @@ class Parser:
             return
         self.syntax_error('<assign_statement>')
 
-    # Productions 231-233: <id_type4>
+    # Productions 233-235: <id_type4>
     def parse_id_type4(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<id_type4>']):  # prod 231
+        if self.in_predict(PREDICT_SET['<id_type4>']):  # prod 233
             self.match_token('(')
             if self.stop: return
             self.parse_func_argu()
@@ -2180,11 +2149,11 @@ class Parser:
             self.match_token(')')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<id_type4_1>']):  # prod 232
+        elif self.in_predict(PREDICT_SET['<id_type4_1>']):  # prod 234
             self.parse_unary_op()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<id_type4_2>']):  # prod 233
+        elif self.in_predict(PREDICT_SET['<id_type4_2>']):  # prod 235
             self.parse_id_type3()
             if self.stop: return
             self.parse_assign_end()
@@ -2192,56 +2161,58 @@ class Parser:
             return
         self.syntax_error('<id_type4>')
 
-    # Productions 234-235: <assign_end>
+    # Productions 236-237: <assign_end>
     def parse_assign_end(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<assign_end>']):  # prod 234
+        if self.in_predict(PREDICT_SET['<assign_end>']):  # prod 236
             self.parse_compound_op()
             if self.stop: return
-            self.context_stack.append('assignment')
+            # ADD CONTEXT TRACKING for compound assignment
+            self._push_context("assignment_rhs")
             self.parse_expression()
-            self.context_stack.pop()
+            self._pop_context()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<assign_end_1>']):  # prod 235
+        elif self.in_predict(PREDICT_SET['<assign_end_1>']):  # prod 237
             self.match_token('=')
             if self.stop: return
-            self.context_stack.append('assignment')
+            # ADD CONTEXT TRACKING
+            self._push_context("assignment_rhs")
             self.parse_assign_rhs()
-            self.context_stack.pop()
+            self._pop_context()
             if self.stop: return
             return
         self.syntax_error('<assign_end>')
 
-    # Productions 236-240: <compound_op>
+    # Productions 238-242: <compound_op>
     def parse_compound_op(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<compound_op>']):  # prod 236
+        if self.in_predict(PREDICT_SET['<compound_op>']):  # prod 238
             self.match_token('+=')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<compound_op_1>']):  # prod 237
+        elif self.in_predict(PREDICT_SET['<compound_op_1>']):  # prod 239
             self.match_token('-=')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<compound_op_2>']):  # prod 238
+        elif self.in_predict(PREDICT_SET['<compound_op_2>']):  # prod 240
             self.match_token('*=')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<compound_op_3>']):  # prod 239
+        elif self.in_predict(PREDICT_SET['<compound_op_3>']):  # prod 241
             self.match_token('/=')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<compound_op_4>']):  # prod 240
+        elif self.in_predict(PREDICT_SET['<compound_op_4>']):  # prod 242
             self.match_token('%=')
             if self.stop: return
             return
         self.syntax_error('<compound_op>')
 
-    # Productions 241-245: <assign_rhs>
+    # Productions 243-247: <assign_rhs>
     def parse_assign_rhs(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<assign_rhs>']):  # prod 241
+        if self.in_predict(PREDICT_SET['<assign_rhs>']):  # prod 243
             self.match_token('id')
             if self.stop: return
             self.parse_id_type()
@@ -2249,31 +2220,29 @@ class Parser:
             self.parse_assign_exp()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<assign_rhs_1>']):  # prod 242
+        elif self.in_predict(PREDICT_SET['<assign_rhs_1>']):  # prod 244
             self.match_token('(')
             if self.stop: return
-            self.context_stack.append('group_expr')
             self.parse_assign_rhs()
-            self.context_stack.pop()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
             self.parse_assign_exp()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<assign_rhs_2>']):  # prod 243
+        elif self.in_predict(PREDICT_SET['<assign_rhs_2>']):  # prod 245
             self.parse_value_exp()
             if self.stop: return
             self.parse_assign_exp()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<assign_rhs_3>']):  # prod 244
+        elif self.in_predict(PREDICT_SET['<assign_rhs_3>']):  # prod 246
             self.parse_operator()
             if self.stop: return
             self.parse_assign_rhs()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<assign_rhs_4>']):  # prod 245
+        elif self.in_predict(PREDICT_SET['<assign_rhs_4>']):  # prod 247
             self.match_token('wall_lit')
             if self.stop: return
             self.parse_assign_exp()
@@ -2281,30 +2250,31 @@ class Parser:
             return
         self.syntax_error('<assign_rhs>')
 
-    # Productions 246-247: <assign_exp>
+    # Productions 248-249: <assign_exp>
     def parse_assign_exp(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<assign_exp>']):  # prod 246
+        if self.in_predict(PREDICT_SET['<assign_exp>']):  # prod 248
             self.parse_operator()
             if self.stop: return
             self.parse_assign_rhs()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<assign_exp_1>']):  # prod 247
+        elif self.in_predict(PREDICT_SET['<assign_exp_1>']):  # prod 249
             return
         self.syntax_error('<assign_exp>')
 
-    # Production 248: <if_statement>
+    # Production 250: <if_statement>
     def parse_if_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<if_statement>']):  # prod 248
+        if self.in_predict(PREDICT_SET['<if_statement>']):  # prod 250
             self.match_token('if')
             if self.stop: return
             self.match_token('(')
             if self.stop: return
-            self.context_stack.append('if_condition')
+            # ADD CONTEXT TRACKING
+            self._push_context("if_condition")
             self.parse_expression()
-            self.context_stack.pop()
+            self._pop_context()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2319,27 +2289,27 @@ class Parser:
             return
         self.syntax_error('<if_statement>')
 
-    # Productions 249-250: <else_statement>
+    # Productions 251-252: <else_statement>
     def parse_else_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<else_statement>']):  # prod 249
+        if self.in_predict(PREDICT_SET['<else_statement>']):  # prod 251
             self.match_token('else')
             if self.stop: return
             self.parse_else_statement2()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<else_statement_1>']):  # prod 250
+        elif self.in_predict(PREDICT_SET['<else_statement_1>']):  # prod 252
             return
         self.syntax_error('<else_statement>')
 
-    # Productions 251-252: <else_statement2>
+    # Productions 253-254: <else_statement2>
     def parse_else_statement2(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<else_statement2>']):  # prod 251
+        if self.in_predict(PREDICT_SET['<else_statement2>']):  # prod 253
             self.parse_if_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<else_statement2_1>']):  # prod 252
+        elif self.in_predict(PREDICT_SET['<else_statement2_1>']):  # prod 254
             self.match_token('{')
             if self.stop: return
             self.parse_func_body()
@@ -2349,17 +2319,18 @@ class Parser:
             return
         self.syntax_error('<else_statement2>')
 
-    # Production 253: <switch_statement>
+    # Production 255: <switch_statement>
     def parse_switch_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<switch_statement>']):  # prod 253
+        if self.in_predict(PREDICT_SET['<switch_statement>']):  # prod 255
             self.match_token('room')
             if self.stop: return
             self.match_token('(')
             if self.stop: return
-            self.context_stack.append('switch_condition')
+            # ADD CONTEXT TRACKING
+            self._push_context("switch_condition")
             self.parse_expression()
-            self.context_stack.pop()
+            self._pop_context()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2372,10 +2343,10 @@ class Parser:
             return
         self.syntax_error('<switch_statement>')
 
-    # Productions 254-255: <switch_body>
+    # Productions 256-257: <switch_body>
     def parse_switch_body(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<switch_body>']):  # prod 254
+        if self.in_predict(PREDICT_SET['<switch_body>']):  # prod 256
             self.match_token('door')
             if self.stop: return
             self.parse_case_exp()
@@ -2387,7 +2358,7 @@ class Parser:
             self.parse_mult_switch_body()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<switch_body_1>']):  # prod 255
+        elif self.in_predict(PREDICT_SET['<switch_body_1>']):  # prod 257
             self.match_token('ground')
             if self.stop: return
             self.match_token(':')
@@ -2397,117 +2368,48 @@ class Parser:
             return
         self.syntax_error('<switch_body>')
 
-    # Productions 256-257: <mult_switch_body>
+    # Productions 258-259: <mult_switch_body>
     def parse_mult_switch_body(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<mult_switch_body>']):  # prod 256
+        if self.in_predict(PREDICT_SET['<mult_switch_body>']):  # prod 258
             self.parse_switch_body()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<mult_switch_body_1>']):  # prod 257
+        elif self.in_predict(PREDICT_SET['<mult_switch_body_1>']):  # prod 259
             return
         self.syntax_error('<mult_switch_body>')
 
-    # Production 258: <case_exp>
-    def parse_case_exp(self):
-        if self.stop: return
-        if self.in_predict(PREDICT_SET['<case_exp>']):  # prod 258
-            self.parse_case_type()
-            if self.stop: return
-            self.parse_case_op()
-            if self.stop: return
-            return
-        self.syntax_error('<case_exp>')
-
-    # Productions 259-261: <case_type>
-    def parse_case_type(self):
-        if self.stop: return
-        if self.in_predict(PREDICT_SET['<case_type>']):  # prod 259
-            self.parse_case_val()
-            if self.stop: return
-            return
-        elif self.in_predict(PREDICT_SET['<case_type_1>']):  # prod 260
-            self.parse_case_group()
-            if self.stop: return
-            return
-        elif self.in_predict(PREDICT_SET['<case_type_2>']):  # prod 261
-            self.match_token('-')
-            if self.stop: return
-            self.parse_case_negative()
-            if self.stop: return
-            return
-        self.syntax_error('<case_type>')
-
-    # Productions 262-265: <case_val>
+    # Productions 260-263: <case_val>
     def parse_case_val(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<case_val>']):  # prod 262
+        if self.in_predict(PREDICT_SET['<case_val>']):  # prod 260
             self.match_token('tile_lit')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<case_val_1>']):  # prod 263
+        elif self.in_predict(PREDICT_SET['<case_val_1>']):  # prod 261
             self.match_token('brick_lit')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<case_val_2>']):  # prod 264
+        elif self.in_predict(PREDICT_SET['<case_val_2>']):  # prod 262
             self.match_token('solid')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<case_val_3>']):  # prod 265
+        elif self.in_predict(PREDICT_SET['<case_val_3>']):  # prod 263
             self.match_token('fragile')
             if self.stop: return
             return
         self.syntax_error('<case_val>')
 
-    # Production 266: <case_group>
-    def parse_case_group(self):
-        if self.stop: return
-        if self.in_predict(PREDICT_SET['<case_group>']):  # prod 266
-            self.match_token('(')
-            if self.stop: return
-            self.parse_case_exp()
-            if self.stop: return
-            self.match_token(')')
-            if self.stop: return
-            return
-        self.syntax_error('<case_group>')
-
-    # Productions 267-268: <case_negative>
-    def parse_case_negative(self):
-        if self.stop: return
-        if self.in_predict(PREDICT_SET['<case_negative>']):  # prod 267
-            self.parse_case_val()
-            if self.stop: return
-            return
-        elif self.in_predict(PREDICT_SET['<case_negative_1>']):  # prod 268
-            self.parse_case_group()
-            if self.stop: return
-            return
-        self.syntax_error('<case_negative>')
-
-    # Productions 269-270: <case_op>
-    def parse_case_op(self):
-        if self.stop: return
-        if self.in_predict(PREDICT_SET['<case_op>']):  # prod 269
-            self.parse_operator()
-            if self.stop: return
-            self.parse_case_exp()
-            if self.stop: return
-            return
-        elif self.in_predict(PREDICT_SET['<case_op_1>']):  # prod 270
-            return
-        self.syntax_error('<case_op>')
-
-    # Productions 271-273: <case_body>
+    # Productions 264-266: <case_body>
     def parse_case_body(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<case_body>']):  # prod 271
+        if self.in_predict(PREDICT_SET['<case_body>']):  # prod 264
             self.parse_statement()
             if self.stop: return
             self.parse_mult_smt()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<case_body_1>']):  # prod 272
+        elif self.in_predict(PREDICT_SET['<case_body_1>']):  # prod 265
             self.match_token('{')
             if self.stop: return
             self.parse_func_body()
@@ -2515,44 +2417,44 @@ class Parser:
             self.match_token('}')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<case_body_2>']):  # prod 273
+        elif self.in_predict(PREDICT_SET['<case_body_2>']):  # prod 266
             return
         self.syntax_error('<case_body>')
 
-    # Productions 274-275: <mult_smt>
+    # Productions 267-268: <mult_smt>
     def parse_mult_smt(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<mult_smt>']):  # prod 274
+        if self.in_predict(PREDICT_SET['<mult_smt>']):  # prod 267
             self.parse_statement()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<mult_smt_1>']):  # prod 275
+        elif self.in_predict(PREDICT_SET['<mult_smt_1>']):  # prod 268
             return
         self.syntax_error('<mult_smt>')
 
-    # Production 276: <for_statement>
+    # Production 269: <for_statement>
     def parse_for_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<for_statement>']):  # prod 276
+        if self.in_predict(PREDICT_SET['<for_statement>']):  # prod 269
             self.match_token('for')
             if self.stop: return
             self.match_token('(')
             if self.stop: return
-            self.context_stack.append('for_declaration')
             self.parse_for_dec()
-            self.context_stack.pop()
             if self.stop: return
             self.match_token(';')
             if self.stop: return
-            self.context_stack.append('for_condition')
+            # ADD CONTEXT TRACKING for condition
+            self._push_context("for_condition")
             self.parse_expression()
-            self.context_stack.pop()
+            self._pop_context()
             if self.stop: return
             self.match_token(';')
             if self.stop: return
-            self.context_stack.append('for_increment')
+            # ADD CONTEXT TRACKING for increment
+            self._push_context("for_increment")
             self.parse_expression()
-            self.context_stack.pop()
+            self._pop_context()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2565,10 +2467,10 @@ class Parser:
             return
         self.syntax_error('<for_statement>')
 
-    # Productions 277-278: <for_dec>
+    # Productions 270-271: <for_dec>
     def parse_for_dec(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<for_dec>']):  # prod 277
+        if self.in_predict(PREDICT_SET['<for_dec>']):  # prod 270
             self.parse_data_type()
             if self.stop: return
             self.match_token('id')
@@ -2576,25 +2478,28 @@ class Parser:
             self.parse_initializer()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<for_dec_1>']):  # prod 278
+        elif self.in_predict(PREDICT_SET['<for_dec_1>']):  # prod 271
             self.match_token('id')
+            if self.stop: return
+            self.parse_id_type3()
             if self.stop: return
             self.parse_initializer()
             if self.stop: return
             return
         self.syntax_error('<for_dec>')
 
-    # Production 279: <while_statement>
+    # Production 272: <while_statement>
     def parse_while_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<while_statement>']):  # prod 279
+        if self.in_predict(PREDICT_SET['<while_statement>']):  # prod 272
             self.match_token('while')
             if self.stop: return
             self.match_token('(')
             if self.stop: return
-            self.context_stack.append('while_condition')
+            # ADD CONTEXT TRACKING
+            self._push_context("while_condition")
             self.parse_expression()
-            self.context_stack.pop()
+            self._pop_context()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2607,10 +2512,10 @@ class Parser:
             return
         self.syntax_error('<while_statement>')
 
-    # Production 280: <dowhile_statement>
+    # Production 273: <dowhile_statement>
     def parse_dowhile_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<dowhile_statement>']):  # prod 280
+        if self.in_predict(PREDICT_SET['<dowhile_statement>']):  # prod 273
             self.match_token('do')
             if self.stop: return
             self.match_token('{')
@@ -2623,9 +2528,10 @@ class Parser:
             if self.stop: return
             self.match_token('(')
             if self.stop: return
-            self.context_stack.append('dowhile_condition')
+            # ADD CONTEXT TRACKING
+            self._push_context("while_condition")
             self.parse_expression()
-            self.context_stack.pop()
+            self._pop_context()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2634,10 +2540,10 @@ class Parser:
             return
         self.syntax_error('<dowhile_statement>')
 
-    # Production 281: <break_statement>
+    # Production 274: <break_statement>
     def parse_break_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<break_statement>']):  # prod 281
+        if self.in_predict(PREDICT_SET['<break_statement>']):  # prod 274
             self.match_token('crack')
             if self.stop: return
             self.match_token(';')
@@ -2645,10 +2551,10 @@ class Parser:
             return
         self.syntax_error('<break_statement>')
 
-    # Production 282: <continue_statement>
+    # Production 275: <continue_statement>
     def parse_continue_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<continue_statement>']):  # prod 282
+        if self.in_predict(PREDICT_SET['<continue_statement>']):  # prod 275
             self.match_token('mend')
             if self.stop: return
             self.match_token(';')
@@ -2656,15 +2562,13 @@ class Parser:
             return
         self.syntax_error('<continue_statement>')
 
-    # Production 283: <return_statement>
+    # Production 276: <return_statement>
     def parse_return_statement(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<return_statement>']):  # prod 283
+        if self.in_predict(PREDICT_SET['<return_statement>']):  # prod 276
             self.match_token('home')
             if self.stop: return
-            self.context_stack.append('return_statement')
             self.parse_assign_rhs()
-            self.context_stack.pop()
             if self.stop: return
             self.match_token(';')
             if self.stop: return

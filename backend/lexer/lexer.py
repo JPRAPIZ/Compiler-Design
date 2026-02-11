@@ -305,11 +305,11 @@ class Lexer:
         )
 
     def is_delim9(self, ch) -> bool:
-        # delim9 { alpha_id , ) , ] , , , ; , whitespace }
+        # delim9 { alpha_id , (, ) , ] , , , ; , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_id(ch)
-            or ch in (')', ']', ',', ';')
+            or ch in ('(', ')', ']', ',', ';')
             or self.is_whitespace(ch)
         )
 
@@ -360,11 +360,11 @@ class Lexer:
         )
 
     def is_delim15(self, ch) -> bool:
-        # delim15 { operators , { , ) , ] , ; , whitespace }
+        # delim15 { operators , { , ) , ] , ; , ++, --, whitespace }
         return (
             self.is_eof(ch)
             or self.is_operator_char(ch)
-            or ch in ('{', ')', ']', ';')
+            or ch in ('{', ')', ']', ';', '++', '--')
             or self.is_whitespace(ch)
         )
 
