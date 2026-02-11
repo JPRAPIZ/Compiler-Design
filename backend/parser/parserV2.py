@@ -98,7 +98,7 @@ class Parser:
         return key
 
     def syntax_error(self, nt: str):
-        """Generate error with correct expected tokens from PREDICT sets"""
+        """Generate error with lexically valid expected tokens from PREDICT sets"""
         base = self._base_nt(nt)
         expected = set()
         
@@ -107,9 +107,79 @@ class Parser:
             if self._base_nt(key) == base:
                 expected.update(PREDICT_SET[key])
         
+        # Apply lexical validation filter
+        expected = self._filter_lexically_invalid(expected, base)
+        
         # Sort for consistent output
         expected = sorted(list(expected))
         self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {expected}")
+
+    def _filter_lexically_invalid(self, tokens: set, base_nt: str) -> set:
+        """
+        Remove tokens that are semantically/contextually invalid.
+        
+        This implements CONTEXT-AWARE filtering based on parsing rules:
+        1. Prefix operators (++, --, !) only valid in specific contexts
+        2. Commas only valid in multi-element contexts (params, args, declarations)
+        3. Semicolons invalid inside parentheses/expressions
+        4. Brackets only valid in array contexts
+        """
+        filtered = set(tokens)
+        
+        # ===== RULE 1: Filter prefix-only operators =====
+        prefix_only_operators = {'++', '--', '!'}
+        valid_prefix_contexts = {
+            '<expression>', '<assign_rhs>', '<prefix_op>', '<prefix_exp>', '<func_argu>'
+        }
+        
+        if base_nt not in valid_prefix_contexts:
+            filtered -= prefix_only_operators
+        
+        # ===== RULE 2: Filter commas in expression contexts =====
+        # Commas are NOT valid inside:
+        # - Condition expressions (if, while, for, room, do-while)
+        # - Binary operations
+        # - Single-value contexts
+        expression_contexts_no_comma = {
+            '<expression>',      # General expressions don't allow top-level commas
+            '<value_exp>',       # Value expressions
+            '<exp_op>',          # Expression operators
+            '<assign_exp>',      # Assignment expressions
+        }
+        
+        if base_nt in expression_contexts_no_comma:
+            filtered.discard(',')
+        
+        # ===== RULE 3: Filter semicolons in nested contexts =====
+        # Semicolons are statement terminators, not valid inside:
+        # - Parenthesized expressions
+        # - Array indices
+        # - Expression operators
+        no_semicolon_contexts = {
+            '<expression>', '<value_exp>', '<exp_op>', '<assign_exp>',
+            '<id_type>', '<id_type2>', '<id_type3>',
+            '<arr_struct>', '<array_index>', '<array_index2>',
+            '<postfix_op>', '<prefix_exp>', '<operator>',
+            '<wall_op>', '<wall_init>',
+        }
+        
+        if base_nt in no_semicolon_contexts:
+            filtered.discard(';')
+        
+        # ===== RULE 4: Filter brackets in non-array contexts =====
+        # Right bracket ']' only valid when:
+        # - Actually in array indexing context
+        # - Or in array size declaration
+        valid_bracket_contexts = {
+            '<arr_size>', '<array_index>', '<array_index2>',
+            '<wall_size>', '<array>', '<array2>',
+        }
+        
+        if base_nt not in valid_bracket_contexts:
+            filtered.discard(']')
+        
+        # If filtering removed everything, return original (safety fallback)
+        return filtered if filtered else tokens
 
     def _add_error(self, msg: str):
         self.errors.append({
@@ -813,7 +883,7 @@ class Parser:
             self.parse_array2()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<array>_1']):  # prod 72
+        elif self.in_predict(PREDICT_SET['<array_1>']):  # prod 72
             return
         self.syntax_error('<array>')
 
@@ -2349,7 +2419,7 @@ class Parser:
         if self.in_predict(PREDICT_SET['<switch_body>']):  # prod 256
             self.match_token('door')
             if self.stop: return
-            self.parse_case_exp()
+            self.parse_case_val()
             if self.stop: return
             self.match_token(':')
             if self.stop: return

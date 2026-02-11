@@ -387,11 +387,11 @@ class Lexer:
         )
 
     def is_delim18(self, ch) -> bool:
-        # delim18 { alpha_num , - , & , ' , " , whitespace }
+        # delim18 { alpha_num , }, - , & , ' , " , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
-            or ch in ('-', '&', "'", '"')
+            or ch in ('{', '-', '&', "'", '"')
             or self.is_whitespace(ch)
         )
 
