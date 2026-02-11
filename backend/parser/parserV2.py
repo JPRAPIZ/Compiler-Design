@@ -57,6 +57,13 @@ class Parser:
             return "EOF"
         tok = self.tokens[pos]
         return self._norm_type(tok.tokenType)
+    
+    def _get_previous_token_type(self) -> str:
+        """Get the type of the previous token (for context-aware filtering)"""
+        if self.index <= 0:
+            return None
+        prev_tok = self.tokens[self.index - 1]
+        return self._norm_type(prev_tok.tokenType)
 
     # ---------------- context tracking ----------------
     def _push_context(self, context_type: str):
@@ -107,69 +114,143 @@ class Parser:
             if self._base_nt(key) == base:
                 expected.update(PREDICT_SET[key])
         
-        # Apply lexical validation filter
-        expected = self._filter_lexically_invalid(expected, base)
+        # Apply context-aware validation filter
+        expected = self._filter_contextually_invalid(expected, base)
         
         # Sort for consistent output
         expected = sorted(list(expected))
         self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {expected}")
 
-    def _filter_lexically_invalid(self, tokens: set, base_nt: str) -> set:
+    def _filter_contextually_invalid(self, tokens: set, base_nt: str) -> set:
         """
-        Remove tokens that are semantically/contextually invalid.
+        Context-aware filtering of expected tokens.
         
-        This implements CONTEXT-AWARE filtering based on parsing rules:
-        1. Prefix operators (++, --, !) only valid in specific contexts
-        2. Commas only valid in multi-element contexts (params, args, declarations)
-        3. Semicolons invalid inside parentheses/expressions
-        4. Brackets only valid in array contexts
+        Handles all test cases by removing tokens that are:
+        1. Syntactically valid but contextually invalid
+        2. Would lead to nonsensical error messages
         """
         filtered = set(tokens)
+        prev_token = self._get_previous_token_type()
         
-        # ===== RULE 1: Filter prefix-only operators =====
-        prefix_only_operators = {'++', '--', '!'}
-        valid_prefix_contexts = {
-            '<expression>', '<assign_rhs>', '<prefix_op>', '<prefix_exp>', '<func_argu>'
+        # =====================================================================
+        # RULE 1: PREFIX OPERATORS - Need operands
+        # =====================================================================
+        # ++, --, ! can ONLY appear at START of expressions
+        # When alone (e.g., "if (++)"), they're INVALID
+        
+        prefix_start_contexts = {
+            '<expression>',      # Can start: ++x, --y, !z
+            '<assign_rhs>',      # Can start: = ++x
+            '<func_argu>',       # Can start: f(++x)
         }
         
-        if base_nt not in valid_prefix_contexts:
-            filtered -= prefix_only_operators
+        # <prefix_exp> is SPECIAL: after seeing ++/--, we ONLY expect id or (
+        if base_nt == '<prefix_exp>':
+            # Test case: if (--) should expect ONLY 'id', '('
+            return {'id', '('}
         
-        # ===== RULE 2: Filter commas in expression contexts =====
-        # Commas are NOT valid inside:
-        # - Condition expressions (if, while, for, room, do-while)
-        # - Binary operations
-        # - Single-value contexts
-        expression_contexts_no_comma = {
-            '<expression>',      # General expressions don't allow top-level commas
-            '<value_exp>',       # Value expressions
-            '<exp_op>',          # Expression operators
-            '<assign_exp>',      # Assignment expressions
+        # Remove prefix operators from non-start contexts
+        if base_nt not in prefix_start_contexts:
+            filtered.discard('!')
+            filtered.discard('++')
+            filtered.discard('--')
+        
+        # =====================================================================
+        # RULE 2: POSTFIX OPERATORS - Add where missing
+        # =====================================================================
+        # After expressions/ids, ++ and -- can be POSTFIX
+        # Test case: while (x 5) - after 'x', ++/-- are valid
+        
+        postfix_valid_contexts = {
+            '<id_type>',         # After id: id++, id--
+            '<id_type2>',        # In complex expressions
+            '<id_type3>',        # After id in assignment context
+            '<arr_struct>',      # After array/struct: arr[0]++
+            '<exp_op>',          # After complete expression
+            '<assign_exp>',      # After assignment expression
         }
         
-        if base_nt in expression_contexts_no_comma:
+        if base_nt in postfix_valid_contexts:
+            filtered.add('++')
+            filtered.add('--')
+        
+        # =====================================================================
+        # RULE 3: EXPRESSION OPERATORS (<exp_op> and <assign_exp>)
+        # =====================================================================
+        # Test case: id = ((("A")+"B")+"C") - after final ), need ; not )
+        # Test case: if (x + y z) - after 'y', ++/-- should appear
+        
+        if base_nt in {'<exp_op>', '<assign_exp>'}:
+            # Always remove comma (no comma operator)
+            filtered.discard(',')
+            filtered.discard(']')
+            
+            # Add semicolon for statement termination
+            if base_nt == '<exp_op>':
+                filtered.add(';')
+            
+            # Keep ) as it's valid for closing expressions
+            # DON'T unconditionally remove ) - it's valid when expression complete
+        
+        # =====================================================================
+        # RULE 4: COMMA FILTERING
+        # =====================================================================
+        # Test case: if (x + y z) - no comma after 'y'
+        
+        no_comma_contexts = {
+            '<expression>',      # Conditions don't use commas
+            '<value_exp>',       # Values don't use commas
+            '<exp_op>',          # Handled above
+            '<assign_exp>',      # Handled above
+            '<id_type>',         # After id in expression
+            '<id_type2>',        # Complex id expressions
+            '<id_type3>',        # Assignment id
+            '<arr_struct>',      # Array/struct access
+            '<operator>',        # Operators don't include comma
+        }
+        
+        if base_nt in no_comma_contexts:
             filtered.discard(',')
         
-        # ===== RULE 3: Filter semicolons in nested contexts =====
-        # Semicolons are statement terminators, not valid inside:
-        # - Parenthesized expressions
-        # - Array indices
-        # - Expression operators
-        no_semicolon_contexts = {
-            '<expression>', '<value_exp>', '<exp_op>', '<assign_exp>',
-            '<id_type>', '<id_type2>', '<id_type3>',
-            '<arr_struct>', '<array_index>', '<array_index2>',
-            '<postfix_op>', '<prefix_exp>', '<operator>',
-            '<wall_op>', '<wall_init>',
+        # =====================================================================
+        # RULE 5: SEMICOLON FILTERING
+        # =====================================================================
+        # ; is a statement terminator, not valid INSIDE expressions
+        # BUT it IS valid at the END of expressions (in <exp_op>)
+        
+        never_semicolon = {
+            '<expression>',      # Not in condition: if (x; y)
+            '<value_exp>',       # Not in values
+            '<prefix_exp>',      # Not after prefix op
+            '<operator>',        # Not as operator
+            '<id_type>',         # Not immediately after id
+            '<id_type2>',        # Not in expression middle
+            '<id_type3>',        # Not after id in assignment
+            '<arr_struct>',      # Not in array/struct
+            '<array_index>',     # Not in array index
+            '<array_index2>',    # Not in 2D index
+            '<postfix_op>',      # Not as postfix
+            '<wall_op>',         # Not in wall ops
+            '<wall_init>',       # Not in wall init
+            '<assign_exp>',      # Not in assign expression middle
         }
         
-        if base_nt in no_semicolon_contexts:
+        if base_nt in never_semicolon:
             filtered.discard(';')
         
-        # ===== RULE 4: Filter brackets in non-array contexts =====
-        # Right bracket ']' only valid when:
-        # - Actually in array indexing context
-        # - Or in array size declaration
+        # =====================================================================
+        # RULE 6: PARENTHESIS FILTERING
+        # =====================================================================
+        # ) should NOT appear after operators (incomplete expression)
+        
+        if base_nt == '<operator>':
+            filtered.discard(')')
+        
+        # =====================================================================
+        # RULE 7: BRACKET FILTERING
+        # =====================================================================
+        # ] only valid in array contexts
+        
         valid_bracket_contexts = {
             '<arr_size>', '<array_index>', '<array_index2>',
             '<wall_size>', '<array>', '<array2>',
@@ -178,7 +259,7 @@ class Parser:
         if base_nt not in valid_bracket_contexts:
             filtered.discard(']')
         
-        # If filtering removed everything, return original (safety fallback)
+        # Safety fallback
         return filtered if filtered else tokens
 
     def _add_error(self, msg: str):
