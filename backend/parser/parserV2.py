@@ -129,7 +129,7 @@ class Parser:
         
         # RULE 1: PREFIX OPERATORS
         if base_nt == '<prefix_exp>':
-            return {'id', '('}  # ONLY these after prefix operator
+            return {'id', '('}
         
         prefix_start_contexts = {'<expression>', '<assign_rhs>', '<func_argu>'}
         if base_nt not in prefix_start_contexts:
@@ -152,22 +152,37 @@ class Parser:
                 filtered.discard('++')
                 filtered.discard('--')
         
-        # RULE 3: MULT_VAR (variable declarations)
+        # RULE 3: MULT_VAR (variable declarations) - AGGRESSIVE FILTERING
         if base_nt == '<mult_var>':
-            filtered.discard(')')
-            filtered.discard('++')
-            filtered.discard('--')
+            # Create a whitelist of ONLY valid tokens
+            operators = {'!=', '%', '&&', '*', '+', '-', '/', '<', '<=', '>', '>=', '==', '||'}
+            valid_tokens = operators | {',', ';'}
+            # Only keep valid tokens
+            filtered = filtered & valid_tokens
+            # Ensure comma and semicolon are present
             filtered.add(',')
             filtered.add(';')
         
-        # RULE 4: EXP_OP
+        # RULE 4: EXP_OP - CONTEXT-AWARE SEMICOLON AND PARENTHESIS
         if base_nt == '<exp_op>':
             filtered.discard(',')
             filtered.discard(']')
-            if 'for_increment' not in self.context_stack and 'for_condition' not in self.context_stack:
+            
+            # Check if we're in ANY condition context
+            in_condition = any(ctx in self.context_stack for ctx in 
+                             ['if_condition', 'while_condition', 'switch_condition', 
+                              'for_condition', 'for_increment'])
+            
+            if not in_condition:
+                # Statement context - ADD semicolon, REMOVE closing paren after )
                 filtered.add(';')
-            if prev_token == ')':
-                filtered.discard(')')
+                if prev_token == ')':
+                    filtered.discard(')')
+            else:
+                # Condition context - REMOVE semicolon
+                filtered.discard(';')
+            
+            # In for condition, after literal, can't close paren
             if 'for_condition' in self.context_stack and prev_token in literal_types:
                 filtered.discard(')')
         
@@ -198,6 +213,7 @@ class Parser:
         # RULE 7: PARENTHESIS FILTERING
         if base_nt == '<operator>':
             filtered.discard(')')
+        
         if base_nt in {'<id_type>', '<id_type2>', '<id_type3>'}:
             if 'for_condition' in self.context_stack:
                 filtered.discard(')')
@@ -1770,7 +1786,7 @@ class Parser:
             if self.stop: return
             return
         self.syntax_error('<prefix_exp>')
-
+        
     # Production 171: <id_val>
     def parse_id_val(self):
         if self.stop: return
