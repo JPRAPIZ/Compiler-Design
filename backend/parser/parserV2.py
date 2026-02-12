@@ -127,24 +127,28 @@ class Parser:
         prev_token = self._get_previous_token_type()
         literal_types = {'tile_lit', 'glass_lit', 'brick_lit', 'solid', 'fragile', 'wall_lit'}
         operators = {'!=', '%', '&&', '*', '+', '-', '/', '<', '<=', '>', '>=', '==', '||'}
-        
+        in_for_condition = 'for_condition' in self.context_stack
+        in_condition = any(ctx in self.context_stack for ctx in
+                           ['if_condition', 'while_condition', 'switch_condition',
+                            'for_condition', 'for_increment'])
+
         # RULE 1: PREFIX OPERATORS
         if base_nt == '<prefix_exp>':
             return {'id', '('}
-        
+
         prefix_start_contexts = {'<expression>', '<assign_rhs>', '<func_argu>'}
         if base_nt not in prefix_start_contexts:
             filtered.discard('!')
             filtered.discard('++')
             filtered.discard('--')
-        
+
         # RULE 2: POSTFIX OPERATORS
         postfix_valid_contexts = {'<id_type>', '<id_type2>', '<id_type3>', '<arr_struct>'}
         if base_nt in postfix_valid_contexts:
             if prev_token in {'id', ']'}:
                 filtered.add('++')
                 filtered.add('--')
-        
+
         if base_nt == '<exp_op>':
             if prev_token in {'id', ']'}:
                 filtered.add('++')
@@ -152,82 +156,69 @@ class Parser:
             elif prev_token in literal_types or prev_token == ')':
                 filtered.discard('++')
                 filtered.discard('--')
-        
-        # RULE 3: MULT_VAR - show operators + comma + semicolon
-        # The expression could have continued (operators), or the declaration
-        # could be extended (,) or terminated (;)
+
+        # RULE 3: MULT_VAR - operators + comma + semicolon
+        # Expression could have continued (operators) or declaration
+        # extended (,) or terminated (;)
         if base_nt == '<mult_var>':
-            filtered = operators | {',', ';'}
-            return filtered
-        
-        # RULE 4: EXP_OP - CONTEXT-AWARE SEMICOLON AND PARENTHESIS
+            return operators | {',', ';'}
+
+        # RULE 4: EXP_OP - context-aware semicolon and parenthesis
         if base_nt == '<exp_op>':
-            filtered.discard(',')
             filtered.discard(']')
-            
-            # Check if we're in ANY condition context
-            in_condition = any(ctx in self.context_stack for ctx in 
-                             ['if_condition', 'while_condition', 'switch_condition', 
-                              'for_condition', 'for_increment'])
-            
             if not in_condition:
-                # Statement context - ADD semicolon, REMOVE closing paren after )
+                # Statement context: semicolon terminates; ',' valid (mult_var/func args)
                 filtered.add(';')
-                if prev_token == ')':
+                # FIX TEST 1: discard ')' when prev is literal OR ')' - not only when prev=')'
+                if prev_token in literal_types or prev_token == ')':
                     filtered.discard(')')
             else:
-                # Condition context - REMOVE semicolon
+                # Condition context: no semicolon, no comma
                 filtered.discard(';')
-            
-            # In for condition, after literal, can't close paren
-            if 'for_condition' in self.context_stack and prev_token in literal_types:
-                filtered.discard(')')
-        
-        # FIX TEST 2: ASSIGN_EXP - discard ')' since it was already matched
+                filtered.discard(',')
+                if in_for_condition and prev_token in literal_types:
+                    filtered.discard(')')
+
+        # RULE 5: ASSIGN_EXP - discard ), comma, bracket
+        # FIX TEST 2: assign_exp is a statement-level continuation;
+        # ';' is valid to end the statement, ')' is not (already matched)
         if base_nt == '<assign_exp>':
+            filtered.discard(')')
             filtered.discard(',')
             filtered.discard(']')
-            filtered.discard(')')
-        
-        # RULE 5: COMMA FILTERING
-        no_comma = {'<expression>', '<value_exp>', '<exp_op>', '<assign_exp>',
+
+        # RULE 6: COMMA FILTERING
+        no_comma = {'<expression>', '<value_exp>', '<assign_exp>',
                     '<id_type>', '<id_type2>', '<id_type3>', '<arr_struct>', '<operator>'}
         if base_nt in no_comma:
             filtered.discard(',')
-        
-        # RULE 6: SEMICOLON FILTERING
-        # FIX TEST 3: <id_type> and <id_type2> in for_condition should ADD ';', not remove it
-        in_for_condition = 'for_condition' in self.context_stack
-        
+
+        # RULE 7: SEMICOLON FILTERING
+        # FIX TEST 3: remove <id_type> and <id_type2> from never_semicolon so
+        # for_condition branches below can add ';' correctly
         never_semicolon = {'<expression>', '<value_exp>', '<prefix_exp>', '<operator>',
-                          '<arr_struct>', '<array_index>',
-                          '<array_index2>', '<postfix_op>', '<wall_op>', '<wall_init>', '<assign_exp>'}
-        
-        if base_nt in {'<id_type>', '<id_type2>'}:
+                           '<arr_struct>', '<array_index>', '<array_index2>',
+                           '<postfix_op>', '<wall_op>', '<wall_init>'}
+
+        if base_nt in {'<id_type>', '<id_type2>', '<id_type3>'}:
             if in_for_condition:
-                filtered.add(';')        # In for condition, ';' is valid to skip rest
-                filtered.discard(')')
-            else:
-                filtered.discard(';')
-        elif base_nt == '<id_type3>':
-            if in_for_condition:
-                filtered.add(';')
+                filtered.add(';')        # ';' is valid to skip empty for-clause
                 filtered.discard(')')
             else:
                 filtered.discard(';')
         elif base_nt in never_semicolon:
             filtered.discard(';')
-        
-        # RULE 7: PARENTHESIS FILTERING
+
+        # RULE 8: PARENTHESIS FILTERING
         if base_nt == '<operator>':
             filtered.discard(')')
-        
-        # RULE 8: BRACKET FILTERING
+
+        # RULE 9: BRACKET FILTERING
         valid_brackets = {'<arr_size>', '<array_index>', '<array_index2>',
-                         '<wall_size>', '<array>', '<array2>'}
+                          '<wall_size>', '<array>', '<array2>'}
         if base_nt not in valid_brackets:
             filtered.discard(']')
-        
+
         return filtered if filtered else tokens
 
     def _add_error(self, msg: str):
