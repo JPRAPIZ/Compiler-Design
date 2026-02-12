@@ -122,144 +122,92 @@ class Parser:
         self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {expected}")
 
     def _filter_contextually_invalid(self, tokens: set, base_nt: str) -> set:
-        """
-        Context-aware filtering of expected tokens.
-        
-        Handles all test cases by removing tokens that are:
-        1. Syntactically valid but contextually invalid
-        2. Would lead to nonsensical error messages
-        """
+        """Context-aware filtering of expected tokens."""
         filtered = set(tokens)
         prev_token = self._get_previous_token_type()
+        literal_types = {'tile_lit', 'glass_lit', 'brick_lit', 'solid', 'fragile', 'wall_lit'}
         
-        # =====================================================================
-        # RULE 1: PREFIX OPERATORS - Need operands
-        # =====================================================================
-        # ++, --, ! can ONLY appear at START of expressions
-        # When alone (e.g., "if (++)"), they're INVALID
-        
-        prefix_start_contexts = {
-            '<expression>',      # Can start: ++x, --y, !z
-            '<assign_rhs>',      # Can start: = ++x
-            '<func_argu>',       # Can start: f(++x)
-        }
-        
-        # <prefix_exp> is SPECIAL: after seeing ++/--, we ONLY expect id or (
+        # RULE 1: PREFIX OPERATORS
         if base_nt == '<prefix_exp>':
-            # Test case: if (--) should expect ONLY 'id', '('
-            return {'id', '('}
+            return {'id', '('}  # ONLY these after prefix operator
         
-        # Remove prefix operators from non-start contexts
+        prefix_start_contexts = {'<expression>', '<assign_rhs>', '<func_argu>'}
         if base_nt not in prefix_start_contexts:
             filtered.discard('!')
             filtered.discard('++')
             filtered.discard('--')
         
-        # =====================================================================
-        # RULE 2: POSTFIX OPERATORS - Add where missing
-        # =====================================================================
-        # After expressions/ids, ++ and -- can be POSTFIX
-        # Test case: while (x 5) - after 'x', ++/-- are valid
-        
-        postfix_valid_contexts = {
-            '<id_type>',         # After id: id++, id--
-            '<id_type2>',        # In complex expressions
-            '<id_type3>',        # After id in assignment context
-            '<arr_struct>',      # After array/struct: arr[0]++
-            '<exp_op>',          # After complete expression
-            '<assign_exp>',      # After assignment expression
-        }
-        
+        # RULE 2: POSTFIX OPERATORS
+        postfix_valid_contexts = {'<id_type>', '<id_type2>', '<id_type3>', '<arr_struct>'}
         if base_nt in postfix_valid_contexts:
-            filtered.add('++')
-            filtered.add('--')
+            if prev_token in {'id', ']'}:
+                filtered.add('++')
+                filtered.add('--')
         
-        # =====================================================================
-        # RULE 3: EXPRESSION OPERATORS (<exp_op> and <assign_exp>)
-        # =====================================================================
-        # Test case: id = ((("A")+"B")+"C") - after final ), need ; not )
-        # Test case: if (x + y z) - after 'y', ++/-- should appear
+        if base_nt == '<exp_op>':
+            if prev_token in {'id', ']'}:
+                filtered.add('++')
+                filtered.add('--')
+            elif prev_token in literal_types or prev_token == ')':
+                filtered.discard('++')
+                filtered.discard('--')
         
-        if base_nt in {'<exp_op>', '<assign_exp>'}:
-            # Always remove comma (no comma operator)
+        # RULE 3: MULT_VAR (variable declarations)
+        if base_nt == '<mult_var>':
+            filtered.discard(')')
+            filtered.discard('++')
+            filtered.discard('--')
+            filtered.add(',')
+            filtered.add(';')
+        
+        # RULE 4: EXP_OP
+        if base_nt == '<exp_op>':
             filtered.discard(',')
             filtered.discard(']')
-            
-            # Add semicolon for statement termination
-            if base_nt == '<exp_op>':
+            if 'for_increment' not in self.context_stack and 'for_condition' not in self.context_stack:
                 filtered.add(';')
-            
-            # Keep ) as it's valid for closing expressions
-            # DON'T unconditionally remove ) - it's valid when expression complete
+            if prev_token == ')':
+                filtered.discard(')')
+            if 'for_condition' in self.context_stack and prev_token in literal_types:
+                filtered.discard(')')
         
-        # =====================================================================
-        # RULE 4: COMMA FILTERING
-        # =====================================================================
-        # Test case: if (x + y z) - no comma after 'y'
+        if base_nt == '<assign_exp>':
+            filtered.discard(',')
+            filtered.discard(']')
         
-        no_comma_contexts = {
-            '<expression>',      # Conditions don't use commas
-            '<value_exp>',       # Values don't use commas
-            '<exp_op>',          # Handled above
-            '<assign_exp>',      # Handled above
-            '<id_type>',         # After id in expression
-            '<id_type2>',        # Complex id expressions
-            '<id_type3>',        # Assignment id
-            '<arr_struct>',      # Array/struct access
-            '<operator>',        # Operators don't include comma
-        }
-        
-        if base_nt in no_comma_contexts:
+        # RULE 5: COMMA FILTERING
+        no_comma = {'<expression>', '<value_exp>', '<exp_op>', '<assign_exp>',
+                    '<id_type>', '<id_type2>', '<id_type3>', '<arr_struct>', '<operator>'}
+        if base_nt in no_comma:
             filtered.discard(',')
         
-        # =====================================================================
-        # RULE 5: SEMICOLON FILTERING
-        # =====================================================================
-        # ; is a statement terminator, not valid INSIDE expressions
-        # BUT it IS valid at the END of expressions (in <exp_op>)
+        # RULE 6: SEMICOLON FILTERING
+        never_semicolon = {'<expression>', '<value_exp>', '<prefix_exp>', '<operator>',
+                          '<id_type>', '<id_type2>', '<arr_struct>', '<array_index>',
+                          '<array_index2>', '<postfix_op>', '<wall_op>', '<wall_init>', '<assign_exp>'}
         
-        never_semicolon = {
-            '<expression>',      # Not in condition: if (x; y)
-            '<value_exp>',       # Not in values
-            '<prefix_exp>',      # Not after prefix op
-            '<operator>',        # Not as operator
-            '<id_type>',         # Not immediately after id
-            '<id_type2>',        # Not in expression middle
-            '<id_type3>',        # Not after id in assignment
-            '<arr_struct>',      # Not in array/struct
-            '<array_index>',     # Not in array index
-            '<array_index2>',    # Not in 2D index
-            '<postfix_op>',      # Not as postfix
-            '<wall_op>',         # Not in wall ops
-            '<wall_init>',       # Not in wall init
-            '<assign_exp>',      # Not in assign expression middle
-        }
-        
-        if base_nt in never_semicolon:
+        if base_nt == '<id_type3>':
+            if 'for_condition' in self.context_stack:
+                filtered.add(';')
+                filtered.discard(')')
+            else:
+                filtered.discard(';')
+        elif base_nt in never_semicolon:
             filtered.discard(';')
         
-        # =====================================================================
-        # RULE 6: PARENTHESIS FILTERING
-        # =====================================================================
-        # ) should NOT appear after operators (incomplete expression)
-        
+        # RULE 7: PARENTHESIS FILTERING
         if base_nt == '<operator>':
             filtered.discard(')')
+        if base_nt in {'<id_type>', '<id_type2>', '<id_type3>'}:
+            if 'for_condition' in self.context_stack:
+                filtered.discard(')')
         
-        # =====================================================================
-        # RULE 7: BRACKET FILTERING
-        # =====================================================================
-        # ] only valid in array contexts
-        
-        valid_bracket_contexts = {
-            '<arr_size>', '<array_index>', '<array_index2>',
-            '<wall_size>', '<array>', '<array2>',
-        }
-        
-        if base_nt not in valid_bracket_contexts:
+        # RULE 8: BRACKET FILTERING
+        valid_brackets = {'<arr_size>', '<array_index>', '<array_index2>',
+                         '<wall_size>', '<array>', '<array2>'}
+        if base_nt not in valid_brackets:
             filtered.discard(']')
         
-        # Safety fallback
         return filtered if filtered else tokens
 
     def _add_error(self, msg: str):
@@ -1821,7 +1769,8 @@ class Parser:
             self.parse_id_val()
             if self.stop: return
             return
-        
+        self.syntax_error('<prefix_exp>')
+
     # Production 171: <id_val>
     def parse_id_val(self):
         if self.stop: return
