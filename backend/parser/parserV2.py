@@ -152,56 +152,64 @@ class Parser:
                 filtered.discard('++')
                 filtered.discard('--')
         
-        # RULE 3: MULT_VAR (variable declarations) - AGGRESSIVE FILTERING
+        # RULE 3: MULT_VAR (variable declarations) - INCLUDE COMMA
         if base_nt == '<mult_var>':
-            # Create a whitelist of ONLY valid tokens
-            operators = {'!=', '%', '&&', '*', '+', '-', '/', '<', '<=', '>', '>=', '==', '||'}
-            valid_tokens = operators | {',', ';'}
-            # Only keep valid tokens
-            filtered = filtered & valid_tokens
-            # Ensure comma and semicolon are present
+            # After variable declaration, can continue with comma or end with semicolon
             filtered.add(',')
             filtered.add(';')
+            return filtered
         
-        # RULE 4: EXP_OP - CONTEXT-AWARE SEMICOLON AND PARENTHESIS
+        # RULE 4: EXP_OP - CONTEXT-AWARE FILTERING
         if base_nt == '<exp_op>':
-            filtered.discard(',')
+            # Always remove comma and bracket from exp_op
+            #filtered.discard(',')
             filtered.discard(']')
             
-            # Check if we're in ANY condition context
-            in_condition = any(ctx in self.context_stack for ctx in 
-                             ['if_condition', 'while_condition', 'switch_condition', 
-                              'for_condition', 'for_increment'])
+            # Check context
             in_for_condition = 'for_condition' in self.context_stack
-            
-            if not in_condition:
-                # Statement context - ADD semicolon, REMOVE closing paren after )
-                filtered.add(';')
-                if prev_token in literal_types or prev_token == ')':
-                    filtered.discard(')')
+            in_for_increment = 'for_increment' in self.context_stack
+            in_other_condition = any(ctx in self.context_stack for ctx in 
+                             ['if_condition', 'while_condition', 'switch_condition',])
+
+            if in_for_increment:
+                # For increment: Remove ;, , DO NOT REMOVE )
+                filtered.add(')')
+                filtered.discard(';')
+                filtered.discard(',')
             elif in_for_condition:
                 # For condition - KEEP semicolon (valid to end clause), REMOVE )
                 filtered.add(';')
                 filtered.discard(')')
-            else:
-                # if/while/switch condition - REMOVE semicolon and )
+                filtered.discard(',')
+            elif in_other_condition:
+                # if/while/switch condition - REMOVE semicolon and comma
                 filtered.discard(';')
+                #filtered.discard(')')
+                filtered.discard(',')
+            else:
+                # Statement context - ADD semicolon, REMOVE closing paren
+                filtered.add(';')   
+                filtered.add(',')
                 filtered.discard(')')
         
+        # RULE 5: ASSIGN_EXP - STATEMENT CONTEXT
         if base_nt == '<assign_exp>':
-            filtered.discard(',')
-            filtered.discard(']')
+            # In assignment, can continue with operators or end with semicolon
+            filtered.discard(',')  # Not in function call
+            filtered.discard(']')  # Not in array context
+            filtered.discard(')')  # Parentheses are balanced within the expression
+            filtered.add(';')      # ADD semicolon - ends the statement
         
-        # RULE 5: COMMA FILTERING
-        no_comma = {'<expression>', '<value_exp>', '<exp_op>', '<assign_exp>',
+        # RULE 6: COMMA FILTERING - Remove from expression contexts
+        no_comma = {'<expression>', '<value_exp>', '<exp_op>',
                     '<id_type>', '<id_type2>', '<id_type3>', '<arr_struct>', '<operator>'}
         if base_nt in no_comma:
             filtered.discard(',')
         
-        # RULE 6: SEMICOLON FILTERING
+        # RULE 7: SEMICOLON FILTERING - Remove from mid-expression contexts
         never_semicolon = {'<expression>', '<value_exp>', '<prefix_exp>', '<operator>',
                           '<id_type>', '<id_type2>', '<arr_struct>', '<array_index>',
-                          '<array_index2>', '<postfix_op>', '<wall_op>', '<wall_init>', '<assign_exp>'}
+                          '<array_index2>', '<postfix_op>', '<wall_op>', '<wall_init>'}
         
         if base_nt == '<id_type3>':
             if 'for_condition' in self.context_stack:
@@ -212,15 +220,15 @@ class Parser:
         elif base_nt in never_semicolon:
             filtered.discard(';')
         
-        # RULE 7: PARENTHESIS FILTERING
+        # RULE 8: PARENTHESIS FILTERING
         if base_nt == '<operator>':
             filtered.discard(')')
         
         if base_nt in {'<id_type>', '<id_type2>', '<id_type3>'}:
-            if 'for_condition' in self.context_stack:
+            if 'for_condition' in self.context_stack or 'for_increment' in self.context_stack:
                 filtered.discard(')')
         
-        # RULE 8: BRACKET FILTERING
+        # RULE 9: BRACKET FILTERING
         valid_brackets = {'<arr_size>', '<array_index>', '<array_index2>',
                          '<wall_size>', '<array>', '<array2>'}
         if base_nt not in valid_brackets:
