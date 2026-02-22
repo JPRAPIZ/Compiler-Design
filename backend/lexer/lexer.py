@@ -396,11 +396,11 @@ class Lexer:
         )
 
     def is_delim19(self, ch) -> bool:
-        # delim19 { alpha_num , + , - , whitespace }
+        # delim19 { alpha_num , }, + , - , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
-            or ch in ('+', '-')
+            or ch in ('}', '+', '-')
             or self.is_whitespace(ch)
         )
 
@@ -2153,6 +2153,7 @@ class Lexer:
                 if ch == '=':
                     self.advance()
                     state = 152
+                    continue
 
                 if self.is_delim10(ch):
                     state = 151
