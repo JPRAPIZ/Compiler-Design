@@ -28,9 +28,9 @@ home 0;
   const [editor, setEditor] = useState(null);
 
   // NEW: which button was used
-  const [mode, setMode] = useState("LEX"); // "LEX" | "SYNTAX"
+  const [mode, setMode] = useState("LEX"); // "LEX" | "SYNTAX" | "SEMANTIC"
   // NEW: what type of errors are being shown
-  const [errorKind, setErrorKind] = useState(null); // null | "LEX" | "SYNTAX"
+  const [errorKind, setErrorKind] = useState(null); // null | "LEX" | "SYNTAX" | "SEMANTIC"
 
   // Helper: build annotations + markers from errors (supports range or point)
   const applyErrorsToEditor = (errs) => {
@@ -172,6 +172,77 @@ home 0;
     setIsLoading(false);
   };
 
+  const handleRunSemantic = async () => {
+    setMode("SEMANTIC");
+    setIsLoading(true);
+    clearOutput();
+
+    try {
+      // 1) Run lexer first
+      const lexResponse = await fetch("http://localhost:8000/lex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: code }),
+      });
+
+      const lexData = await lexResponse.json();
+      const lexErrors = Array.isArray(lexData.errors) ? lexData.errors : [];
+
+      if (lexErrors.length > 0) {
+        setErrors(lexErrors);
+        setErrorKind("LEX");
+        applyErrorsToEditor(lexErrors);
+        setIsLoading(false);
+        return;
+      }
+
+      // 2) Run parser
+      const parseResponse = await fetch("http://localhost:8000/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: code }),
+      });
+
+      const parseData = await parseResponse.json();
+      const synErrors = Array.isArray(parseData.errors) ? parseData.errors : [];
+
+      if (synErrors.length > 0) {
+        setErrors(synErrors);
+        setErrorKind("SYNTAX");
+        applyErrorsToEditor(synErrors);
+        setIsLoading(false);
+        return;
+      }
+
+      // 3) Run semantic analysis
+      const semanticResponse = await fetch("http://localhost:8000/semantic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: code }),
+      });
+
+      const semanticData = await semanticResponse.json();
+      const semErrors = Array.isArray(semanticData.errors) ? semanticData.errors : [];
+
+      setErrors(semErrors);
+      setErrorKind("SEMANTIC");
+      applyErrorsToEditor(semErrors);
+    } catch (error) {
+      const fallback = [
+        {
+          message: "Cannot connect to semantic analyzer. Is it running?",
+          line: 1,
+          col: 1,
+        },
+      ];
+      setErrors(fallback);
+      setErrorKind("SEMANTIC");
+      applyErrorsToEditor(fallback);
+    }
+
+    setIsLoading(false);
+  };
+
   const handleErrorClick = (err) => {
     if (!editor) return;
 
@@ -188,14 +259,18 @@ home 0;
       ? "Errors (Lexical)"
       : errorKind === "SYNTAX"
       ? "Errors (Syntax)"
+      : errorKind === "SEMANTIC"
+      ? "Errors (Semantic)"
       : "Errors";
 
   const emptyErrorsText =
     mode === "LEX"
       ? "No Lexical errors."
       : errorKind === "LEX"
-      ? "No Lexical errors." // (this means lex passed; next would be syntax)
-      : "No Syntax errors.";
+      ? "No Lexical errors."
+      : errorKind === "SYNTAX"
+      ? "No Syntax errors." // lex and syntax passed, next would be semantic
+      : "No Semantic errors.";
 
   return (
     <div className="min-h-screen font-sans bg-[#111] text-gray-300">
@@ -227,8 +302,9 @@ home 0;
           </button>
 
           <button
-            disabled
-            className="px-4 py-2 bg-gray-700 text-gray-400 rounded-md font-semibold cursor-not-allowed"
+            onClick={handleRunSemantic}
+            disabled={isLoading}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-md font-semibold hover:bg-indigo-700 disabled:bg-gray-500"
           >
             Run Semantic
           </button>
