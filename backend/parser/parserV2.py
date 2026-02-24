@@ -1607,7 +1607,7 @@ class Parser:
             return
         self.syntax_error('<exp_op>')
 
-    # Productions 145-146: <id_type>
+    # Productions 145-147: <id_type>
     def parse_id_type(self):
         if self.stop: return
         if self.in_predict(PREDICT_SET['<id_type>']):  # prod 145
@@ -1615,41 +1615,45 @@ class Parser:
             if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<id_type_1>']):  # prod 146
+            self.parse_unary_op()
+            if self.stop: return
+            return
+        elif self.in_predict(PREDICT_SET['<id_type_2>']): #prod 147
             return
         self.syntax_error('<id_type>')
 
-    # Productions 147-148: <id_type2>
+    # Productions 148-149: <id_type2>
     def parse_id_type2(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<id_type2>']):  # prod 147
+        if self.in_predict(PREDICT_SET['<id_type2>']):  # prod 148
             self.parse_arr_struct()
             if self.stop: return
             self.parse_postfix_op()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<id_type2_1>']):  # prod 148
+        elif self.in_predict(PREDICT_SET['<id_type2_1>']):  # prod 149
             self.parse_func_call()
             if self.stop: return
             return
         self.syntax_error('<id_type2>')
 
-    # Productions 149-150: <arr_struct>
+    # Productions 150-151: <arr_struct>
     def parse_arr_struct(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<arr_struct>']):  # prod 149
+        if self.in_predict(PREDICT_SET['<arr_struct>']):  # prod 150
             self.parse_array_index()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<arr_struct_1>']):  # prod 150
+        elif self.in_predict(PREDICT_SET['<arr_struct_1>']):  # prod 151
             self.parse_struct_id()
             if self.stop: return
             return
         self.syntax_error('<arr_struct>')
 
-    # Production 151: <array_index>
+    # Production 152: <array_index>
     def parse_array_index(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<array_index>']):  # prod 151
+        if self.in_predict(PREDICT_SET['<array_index>']):  # prod 152
             self.match_token('[')
             if self.stop: return
             self.parse_expression()
@@ -1661,10 +1665,10 @@ class Parser:
             return
         self.syntax_error('<array_index>')
 
-    # Productions 152-153: <array_index2>
+    # Productions 153-154: <array_index2>
     def parse_array_index2(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<array_index2>']):  # prod 152
+        if self.in_predict(PREDICT_SET['<array_index2>']):  # prod 153
             self.match_token('[')
             if self.stop: return
             self.parse_expression()
@@ -1672,14 +1676,14 @@ class Parser:
             self.match_token(']')
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<array_index2_1>']):  # prod 153
+        elif self.in_predict(PREDICT_SET['<array_index2_1>']):  # prod 154
             return
         self.syntax_error('<array_index2>')
 
-    # Production 154: <struct_id>
+    # Production 155: <struct_id>
     def parse_struct_id(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<struct_id>']):  # prod 154
+        if self.in_predict(PREDICT_SET['<struct_id>']):  # prod 155
             self.match_token('.')
             if self.stop: return
             self.match_token('id')
@@ -1689,10 +1693,10 @@ class Parser:
             return
         self.syntax_error('<struct_id>')
 
-    # Productions 155-156: <struct_array>
+    # Productions 156-157: <struct_array>
     def parse_struct_array(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<struct_array>']):  # prod 155
+        if self.in_predict(PREDICT_SET['<struct_array>']):  # prod 156
             self.match_token('[')
             if self.stop: return
             self.parse_expression()
@@ -1702,22 +1706,20 @@ class Parser:
             self.parse_array_index2()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<struct_array_1>']):  # prod 156
+        elif self.in_predict(PREDICT_SET['<struct_array_1>']):  # prod 157
             return
         self.syntax_error('<struct_array>')
 
-    # Productions 157-158: <func_call>
+    # Productions 158: <func_call>
     def parse_func_call(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<func_call>']):  # prod 157
+        if self.in_predict(PREDICT_SET['<func_call>']):  # prod 158
             self.match_token('(')
             if self.stop: return
             self.parse_func_argu()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
-            return
-        elif self.in_predict(PREDICT_SET['<func_call_1>']):  # prod 156
             return
         self.syntax_error('<func_call>')
 
@@ -1732,7 +1734,7 @@ class Parser:
             self.parse_func_mult_call()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<func_argu_1>']):  # prod 158
+        elif self.in_predict(PREDICT_SET['<func_argu_1>']):  # prod 160
             return
         self.syntax_error('<func_argu>')
 
