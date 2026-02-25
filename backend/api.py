@@ -1,16 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 from lexer.lexer import Lexer
 from lexer.tokens import Token
 
-# change this for another file
 from parser.parserV2 import Parser
-# from parser.predict_set import PREDICT_SET
 
-
+from semantic.ast_builder import ASTBuilder
+from semantic.semantic import SemanticAnalyzer
 
 
 class LexRequest(BaseModel):
@@ -28,27 +27,46 @@ class ErrorResponse(BaseModel):
     message: str
     line: int
     col: int
-    start_line: int | None = None
-    start_col: int | None = None
-    end_line: int | None = None
-    end_col: int | None = None
-
-
-
+    start_line: Optional[int] = None
+    start_col: Optional[int] = None
+    end_line: Optional[int] = None
+    end_col: Optional[int] = None
+    _kind: Optional[str] = None   # "lex" | "syntax" | "semantic" — for frontend
 
 class LexResult(BaseModel):
     tokens: List[TokenResponse]
     errors: List[ErrorResponse]
 
-# ------------------------------------------------------------------------
+
 class ParseResult(BaseModel):
     errors: List[ErrorResponse]
-# added ------------------------------------------------------------------------
+
+
+class SemanticResult(BaseModel):
+    errors: List[ErrorResponse]
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+def _make_errors(raw: list, kind: str) -> List[dict]:
+    """Attach a _kind tag to a list of raw error dicts."""
+    out = []
+    for e in raw:
+        out.append({
+            "message":    e.get("message", ""),
+            "line":       e.get("line", 1),
+            "col":        e.get("col", 1),
+            "start_line": e.get("start_line"),
+            "start_col":  e.get("start_col"),
+            "end_line":   e.get("end_line"),
+            "end_col":    e.get("end_col"),
+            "_kind":      kind,
+        })
+    return out
+
 
 # --------- FastAPI app ---------
 
 app = FastAPI()
-
 
 # --------- CORS (React/Vite) ---------
 
@@ -66,11 +84,10 @@ app.add_middleware(
 )
 
 
-# --------- /lex endpoint ---------
+# ── /lex ──────────────────────────────────────────────────────────────────────
 
 @app.post("/lex", response_model=LexResult)
 def lex_source(body: LexRequest):
-    # function calls to backend
     lexer = Lexer(body.source)
     tokens: list[Token] = lexer.scanTokens()
 
@@ -93,50 +110,61 @@ def lex_source(body: LexRequest):
             start_col=e.get("start_col"),
             end_line=e.get("end_line"),
             end_col=e.get("end_col"),
+            _kind="lex",
         )
         for e in lexer.errors
     ]
 
-    return LexResult(
-        tokens=token_responses,
-        errors=error_responses
-    )
+    return LexResult(tokens=token_responses, errors=error_responses)
 
-# @app.post("/parse")
-# def parse_source(body: LexRequest):
-#     lexer = Lexer(body.source)
-#     tokens = lexer.scanTokens()
 
-#     if lexer.errors:
-#         return {"errors": lexer.errors}
 
-#     try:
-#         parser = Parser(tokens)
-#         parser.parse(PREDICT_SET)
-#         return {"errors": []}
-#     except SyntaxError as e:
-#         token = tokens[parser.pos]
-#         return {
-#             "errors": [{
-#                 "message": str(e),
-#                 "line": token.line,
-#                 "col": token.column
-#             }]
-#         }
+# ── /parse ────────────────────────────────────────────────────────────────────
 
-# New -------------------------------------------------------------------
 @app.post("/parse", response_model=ParseResult)
 def parse_source(body: LexRequest):
     lexer = Lexer(body.source)
     tokens = lexer.scanTokens()
 
-    # If lexer has errors, return them immediately
     if lexer.errors:
-        return {"errors": lexer.errors}
+        return {"errors": _make_errors(lexer.errors, "lex")}
 
     parser = Parser(tokens)
-    parser.parse()  # fills parser.errors
+    parser.parse()
 
-    return {"errors": parser.errors}
+    return {"errors": _make_errors(parser.errors, "syntax")}
 
-# ------------------------------------------------------------------------
+
+# ── /semantic ─────────────────────────────────────────────────────────────────
+
+@app.post("/semantic", response_model=SemanticResult)
+def semantic_analyze(body: LexRequest):
+    # Step 1: Lex
+    lexer = Lexer(body.source)
+    tokens = lexer.scanTokens()
+
+    if lexer.errors:
+        return {"errors": _make_errors(lexer.errors, "lex")}
+
+    # Step 2: Parse
+    parser = Parser(tokens)
+    parser.parse()
+
+    if parser.errors:
+        return {"errors": _make_errors(parser.errors, "syntax")}
+
+    # Step 3: Build real AST
+    builder = ASTBuilder(tokens)
+    ast = builder.build_program()
+
+    if ast is None:
+        return {"errors": _make_errors([{
+            "message": "Internal error: failed to build AST",
+            "line": 1, "col": 1,
+        }], "semantic")}
+
+    # Step 4: Semantic analysis
+    analyzer = SemanticAnalyzer(ast)
+    semantic_errors = analyzer.analyze()
+
+    return {"errors": _make_errors(semantic_errors, "semantic")}
