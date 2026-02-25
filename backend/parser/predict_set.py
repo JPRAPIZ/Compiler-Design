@@ -269,7 +269,7 @@ PREDICT_SET = {
     '<switch_body>': ['door'],
     '<switch_body_1>': ['ground'],
     '<mult_switch_body>': ['door', 'ground'],
-    '<mult_switch_body_1>': ['}', 'door', 'ground'],
+    '<mult_switch_body_1>': ['}'],
     '<case_val>': ['tile_lit'],
     '<case_val_1>': ['brick_lit'],
     '<case_val_2>': ['solid'],

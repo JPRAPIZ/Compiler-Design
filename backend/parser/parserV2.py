@@ -2609,8 +2609,6 @@ class Parser:
         if self.in_predict(PREDICT_SET['<mult_switch_body>']):  # prod 270
             self.parse_switch_body()
             if self.stop: return
-            self.parse_mult_switch_body()
-            if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<mult_switch_body_1>']):  # prod 271
             return
@@ -2663,6 +2661,8 @@ class Parser:
         if self.stop: return
         if self.in_predict(PREDICT_SET['<mult_smt>']):  # prod 279
             self.parse_statement()
+            if self.stop: return
+            self.parse_mult_smt()
             if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<mult_smt_1>']):  # prod 280
