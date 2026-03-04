@@ -67,6 +67,110 @@ def _build_expected_sets() -> dict:
 
 _EXPECTED: dict = _build_expected_sets()
 
+# ---------------------------------------------------------------------------
+# Expression-like NTs whose _EXPECTED sets are polluted by FOLLOW tokens.
+# For these NTs we filter the expected set down to only the surface-level
+# FIRST tokens that a programmer would actually type to start (or continue)
+# an expression, keeping the error messages clean and accurate.
+# ---------------------------------------------------------------------------
+
+# Tokens that can legitimately *start* an expression / sub-expression.
+_EXPR_START_TOKENS: frozenset = frozenset({
+    'id', '(', 'tile_lit', 'glass_lit', 'brick_lit', 'solid', 'fragile',
+    'wall_lit', '-', '!', '++', '--',
+})
+
+# Binary / relational operators that continue an expression.
+_EXPR_CONT_TOKENS: frozenset = frozenset({
+    '+', '-', '*', '/', '%',
+    '<', '<=', '>', '>=', '==', '!=', '&&', '||',
+})
+
+# Tokens that are meaningful follow/delimiter tokens that we want to REMOVE
+# from the expected list for expression-like NTs.
+_EXPR_FOLLOW_NOISE: frozenset = frozenset({
+    # assignment operators
+    '=', '+=', '-=', '*=', '/=', '%=',
+    # delimiters / statement terminators
+    ';', ',', ']', ')',
+    # keywords that are never expression starters
+    'if', 'else', 'for', 'while', 'do', 'crack', 'mend', 'home',
+    'write', 'view', 'room', 'door', 'ground',
+    'wall', 'tile', 'glass', 'brick', 'beam', 'field',
+    'house', 'cement', 'roof', 'blueprint',
+    # block delimiters
+    '{', '}',
+    # misc
+    '&', ':', '$',
+})
+
+# NTs whose error reporting should show only expression-start tokens.
+_EXPR_START_ONLY_NTS: frozenset = frozenset({
+    '<expression>',
+    '<assign_rhs>',
+    '<condition>',
+    '<for_exp>',
+    '<prefix_exp>',
+    '<assign_prefix_exp>',
+    '<prefix_cond_exp>',
+    '<prefix_for_exp>',
+    '<id_val>',
+    '<func_argu>',
+})
+
+# NTs whose error reporting should show expression-start tokens plus the
+# binary/relational continuation operators (they fire when we expect more
+# of an already-started expression OR an operator to continue it).
+_EXPR_CONT_NTS: frozenset = frozenset({
+    '<exp_op>',
+    '<assign_exp>',
+    '<cond_op>',
+    '<for_op>',
+})
+
+# NTs where only the suffix-access tokens are relevant ([], ., (), ++, --).
+_EXPR_SUFFIX_NTS: frozenset = frozenset({
+    '<id_type>',
+    '<id_type2>',
+    '<id_type3>',
+    '<arr_struct>',
+    '<array_index>',
+    '<array_index2>',
+    '<struct_id>',
+    '<struct_array>',
+    '<func_call>',
+    '<postfix_op>',
+    '<unary_op>',
+})
+
+_SUFFIX_TOKENS: frozenset = frozenset({'[', '.', '(', '++', '--'})
+
+
+def _filter_expected_for_nt(base_nt: str, raw: set) -> set:
+    """Return a cleaned expected-token set for *base_nt*.
+
+    Removes FOLLOW-set noise that bleeds in due to FIRST/FOLLOW pollution in
+    the original grammar.  Only affects error reporting — parsing logic is
+    untouched.
+    """
+    if base_nt in _EXPR_START_ONLY_NTS:
+        # Keep only tokens that can start an expression.
+        filtered = raw & _EXPR_START_TOKENS
+        return filtered if filtered else raw
+
+    if base_nt in _EXPR_CONT_NTS:
+        # Keep expression starters plus binary continuation operators.
+        filtered = raw & (_EXPR_START_TOKENS | _EXPR_CONT_TOKENS)
+        return filtered if filtered else raw
+
+    if base_nt in _EXPR_SUFFIX_NTS:
+        # Keep only suffix/access tokens.
+        filtered = raw & _SUFFIX_TOKENS
+        return filtered if filtered else raw
+
+    # For all other NTs, strip only the most egregious noise tokens.
+    return raw - _EXPR_FOLLOW_NOISE if (raw - _EXPR_FOLLOW_NOISE) else raw
+
 
 class Parser:
     IGNORE_TYPES = ("space", "tab", "newline", "Single-Line Comment", "Multi-Line Comment")
@@ -160,6 +264,11 @@ class Parser:
             elif 'for_increment' in self.context_stack:
                 expected.discard(';')
                 expected.add(')')
+
+        # Filter out FOLLOW-set noise from expression-like NTs so that the
+        # error message shows only tokens the user would actually write.
+        # This is purely cosmetic — it never affects parsing decisions.
+        expected = _filter_expected_for_nt(base, expected)
 
         self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {sorted(expected)}")
 
