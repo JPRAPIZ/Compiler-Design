@@ -391,7 +391,7 @@ class Lexer:
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
-            or ch in ('{', '-', '&', "'", '"')
+            or ch in ('{', '+', '-', '&', "'", '"')
             or self.is_whitespace(ch)
         )
 
