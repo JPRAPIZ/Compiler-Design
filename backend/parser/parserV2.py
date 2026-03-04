@@ -4,6 +4,70 @@ from typing import List, Dict, Any
 from parser.predict_set import PREDICT_SET
 from parser.follow_set import FOLLOW_SET
 
+# ---------------------------------------------------------------------------
+# Precompute expected-token sets at import time — O(1) at error sites.
+#
+# For each base non-terminal N:
+#   FIRST(N)  = predict tokens that are NOT in FOLLOW(N)
+#               (tokens that start a real, non-epsilon production)
+#   nullable  = True when N has an epsilon production
+#               (detected when a production's every token is in FOLLOW(N))
+#
+# expected(N) = FIRST(N)  ∪  FOLLOW(N)  if N is nullable
+#
+# This is the LL(1) definition. No hand-coded rules needed.
+# ---------------------------------------------------------------------------
+
+def _base_nt(key: str) -> str:
+    """'<exp_op_1>' -> '<exp_op>',  '<func_body>' unchanged."""
+    if not key.endswith(">"):
+        return key
+    core = key[:-1]
+    pos = core.rfind("_")
+    if pos == -1:
+        return key
+    if core[pos + 1:].isdigit():
+        return core[:pos] + ">"
+    return key
+
+
+def _build_expected_sets() -> dict:
+    from collections import defaultdict
+
+    by_base = defaultdict(list)
+    for k, v in PREDICT_SET.items():
+        by_base[_base_nt(k)].append(v)
+
+    expected = {}
+    for base, prods in by_base.items():
+        follow = FOLLOW_SET.get(base, set())
+        first = set()
+        nullable = False
+        for tokens in prods:
+            # Nullable detection: a production is an epsilon production when
+            # every one of its predict tokens is in FOLLOW(N). This works because
+            # in a PREDICT_SET-based grammar the epsilon production is encoded by
+            # listing FOLLOW tokens as its predict set — there is no explicit 'ε'.
+            # If PREDICT_SET ever changes to represent epsilon as the string "ε"
+            # or None, this check must be updated accordingly.
+            if follow and all(t in follow for t in tokens):
+                nullable = True
+            else:
+                first.update(t for t in tokens if t not in follow)
+        result = set(first)
+        if nullable:
+            result |= follow
+        # Pure dispatcher NTs (FIRST empty) keep their raw predict union.
+        # They are never the active NT when an error fires.
+        if not result:
+            result = {t for tokens in prods for t in tokens}
+        expected[base] = frozenset(result)
+    return expected
+
+
+_EXPECTED: dict = _build_expected_sets()
+
+
 class Parser:
     IGNORE_TYPES = ("space", "tab", "newline", "Single-Line Comment", "Multi-Line Comment")
 
@@ -13,9 +77,11 @@ class Parser:
         self.index = 0
         self.stop = False
         self.errors: List[Dict[str, Any]] = []
-        
-        # Track parsing context for better error filtering
-        self.context_stack = []
+
+        # Minimal context stack — only the one genuine LL(1) ambiguity:
+        # FOLLOW(<for_op>) = {) ;} and which is valid depends on whether
+        # we are in the condition clause or the increment clause of a for-loop.
+        self.context_stack: list = []
 
         self.current_type = "EOF"
         self.current_lexeme = "$"
@@ -24,8 +90,7 @@ class Parser:
 
         self._update_current()
 
-    # ---------------- token helpers ----------------
-    # normalizes token id1, id2 ... to id
+    # -- token helpers -------------------------------------------------------
     def _norm_type(self, token_type: str) -> str:
         if isinstance(token_type, str) and token_type.startswith("id"):
             return "id"
@@ -55,27 +120,20 @@ class Parser:
         pos = self.index + offset
         if pos >= len(self.tokens):
             return "EOF"
-        tok = self.tokens[pos]
-        return self._norm_type(tok.tokenType)
-    
-    def _get_previous_token_type(self) -> str:
-        """Get the type of the previous token (for context-aware filtering)"""
-        if self.index <= 0:
-            return None
-        prev_tok = self.tokens[self.index - 1]
-        return self._norm_type(prev_tok.tokenType)
+        return self._norm_type(self.tokens[pos].tokenType)
 
-    # ---------------- context tracking ----------------
-    def _push_context(self, context_type: str):
-        """Push a parsing context onto the stack."""
-        self.context_stack.append(context_type)
-    
+    # -- context stack (for-loop only) ---------------------------------------
+
+    def _push_context(self, ctx: str):
+        self.context_stack.append(ctx)
+
     def _pop_context(self):
-        """Pop a parsing context from the stack."""
         if self.context_stack:
             self.context_stack.pop()
-    
-    def in_predict(self, predict_list: list[str]) -> bool:
+
+    # -- prediction / matching -----------------------------------------------
+
+    def in_predict(self, predict_list: list) -> bool:
         return self.current_type in predict_list
 
     def match_token(self, expected_type: str):
@@ -84,157 +142,26 @@ class Parser:
         if self.current_type == expected_type:
             self._consume()
             return
-        self._add_error(f"Unexpected Character {self.current_lexeme!r}; expected {expected_type!r}")
+        self._add_error(f"Unexpected {self.current_lexeme!r}; expected {expected_type!r}")
 
-    # ---------------- expected tokens for errors ----------------
-    def _base_nt(self, key: str) -> str:
-        # Turns "<main_type_3>" -> "<main_type>"
-        # Leaves "<func_body>" unchanged
-        if not key.endswith(">"):
-            return key
-
-        core = key[:-1]
-        underscore_pos = core.rfind("_")
-        if underscore_pos == -1:
-            return key
-
-        suffix = core[underscore_pos + 1 :]
-        if suffix.isdigit():
-            return core[:underscore_pos] + ">"
-
-        return key
+    # -- error reporting -----------------------------------------------------
 
     def syntax_error(self, nt: str):
-        """Generate error with lexically valid expected tokens from PREDICT sets"""
-        base = self._base_nt(nt)
-        expected = set()
-        
-        # Collect all PREDICT tokens for this non-terminal
-        for key in PREDICT_SET:
-            if self._base_nt(key) == base:
-                expected.update(PREDICT_SET[key])
-        
-        # Apply context-aware validation filter
-        expected = self._filter_contextually_invalid(expected, base)
-        
-        # Sort for consistent output
-        expected = sorted(list(expected))
-        self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {expected}")
+        base = _base_nt(nt)
+        expected = set(_EXPECTED.get(base, frozenset()))
 
-    def _filter_contextually_invalid(self, tokens: set, base_nt: str) -> set:
-        """Context-aware filtering of expected tokens."""
-        filtered = set(tokens)
-        prev_token = self._get_previous_token_type()
-        literal_types = {'tile_lit', 'glass_lit', 'brick_lit', 'solid', 'fragile', 'wall_lit'}
-        
-        # RULE 1: PREFIX OPERATORS
-        if base_nt == '<prefix_exp>':
-            return {'id', '('}
-        
-        prefix_start_contexts = {'<expression>', '<assign_rhs>', '<func_argu>'}
-        if base_nt not in prefix_start_contexts:
-            filtered.discard('!')
-            filtered.discard('++')
-            filtered.discard('--')
-        
-        # RULE 2: POSTFIX OPERATORS
-        postfix_valid_contexts = {'<id_type>', '<id_type2>', '<id_type3>', '<arr_struct>'}
-        if base_nt in postfix_valid_contexts:
-            if prev_token in {'id', ']'}:
-                filtered.add('++')
-                filtered.add('--')
-        
-        if base_nt == '<exp_op>':
-            if prev_token in {'id', ']'}:
-                filtered.add('++')
-                filtered.add('--')
-            elif prev_token in literal_types or prev_token == ')':
-                filtered.discard('++')
-                filtered.discard('--')
-        
-        # RULE 3: MULT_VAR (variable declarations) - INCLUDE COMMA
-        if base_nt == '<mult_var>':
-            # After variable declaration, can continue with comma or end with semicolon
-            filtered.add(',')
-            filtered.add(';')
-            return filtered
-        
-        # RULE 4: EXP_OP - CONTEXT-AWARE FILTERING
-        if base_nt == '<exp_op>':
-            # Always remove comma and bracket from exp_op
-            #filtered.discard(',')
-            filtered.discard(']')
-            
-            # Check context
-            in_for_condition = 'for_condition' in self.context_stack
-            in_for_increment = 'for_increment' in self.context_stack
-            in_other_condition = any(ctx in self.context_stack for ctx in 
-                             ['if_condition', 'while_condition', 'switch_condition',])
-
-            if in_for_increment:
-                # For increment: Remove ;, , DO NOT REMOVE )
-                filtered.add(')')
-                filtered.discard(';')
-                filtered.discard(',')
-            elif in_for_condition:
-                # For condition - KEEP semicolon (valid to end clause), REMOVE )
-                filtered.add(';')
-                filtered.discard(')')
-                filtered.discard(',')
-            elif in_other_condition:
-                # if/while/switch condition - REMOVE semicolon and comma
-                filtered.discard(';')
-                #filtered.discard(')')
-                filtered.discard(',')
-            else:
-                # Statement context - ADD semicolon, REMOVE closing paren
-                filtered.add(';')   
-                filtered.add(',')
-                filtered.discard(')')
-        
-        # RULE 5: ASSIGN_EXP - STATEMENT CONTEXT
-        if base_nt == '<assign_exp>':
-            # In assignment, can continue with operators or end with semicolon
-            filtered.discard(',')  # Not in function call
-            filtered.discard(']')  # Not in array context
-            filtered.discard(')')  # Parentheses are balanced within the expression
-            filtered.add(';')      # ADD semicolon - ends the statement
-        
-        # RULE 6: COMMA FILTERING - Remove from expression contexts
-        no_comma = {'<expression>', '<value_exp>', '<exp_op>',
-                    '<id_type>', '<id_type2>', '<id_type3>', '<arr_struct>', '<operator>'}
-        if base_nt in no_comma:
-            filtered.discard(',')
-        
-        # RULE 7: SEMICOLON FILTERING - Remove from mid-expression contexts
-        never_semicolon = {'<expression>', '<value_exp>', '<prefix_exp>', '<operator>',
-                          '<id_type>', '<id_type2>', '<arr_struct>', '<array_index>',
-                          '<array_index2>', '<postfix_op>', '<wall_op>', '<wall_init>'}
-        
-        if base_nt == '<id_type3>':
+        # For-loop clause disambiguation:
+        # <for_op> and <for_exp> are nullable with FOLLOW = {) ;}
+        # Both appear in the precomputed set; trim to whichever is valid here.
+        if base in ('<for_op>', '<for_exp>'):
             if 'for_condition' in self.context_stack:
-                filtered.add(';')
-                filtered.discard(')')
-            else:
-                filtered.discard(';')
-        elif base_nt in never_semicolon:
-            filtered.discard(';')
-        
-        # RULE 8: PARENTHESIS FILTERING
-        if base_nt == '<operator>':
-            filtered.discard(')')
-        
-        if base_nt in {'<id_type>', '<id_type2>', '<id_type3>'}:
-            if 'for_condition' in self.context_stack or 'for_increment' in self.context_stack:
-                filtered.discard(')')
-        
-        # RULE 9: BRACKET FILTERING
-        valid_brackets = {'<arr_size>', '<array_index>', '<array_index2>',
-                         '<wall_size>', '<array>', '<array2>'}
-        if base_nt not in valid_brackets:
-            filtered.discard(']')
-        
-        return filtered if filtered else tokens
+                expected.discard(')')
+                expected.add(';')
+            elif 'for_increment' in self.context_stack:
+                expected.discard(';')
+                expected.add(')')
+
+        self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {sorted(expected)}")
 
     def _add_error(self, msg: str):
         self.errors.append({
@@ -1517,9 +1444,7 @@ class Parser:
         if self.in_predict(PREDICT_SET['<initializer>']):  # prod 133
             self.match_token('=')
             if self.stop: return
-            self._push_context("assignment_rhs")
             self.parse_expression()
-            self._pop_context()
             if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<initializer_1>']):  # prod 134
@@ -1727,9 +1652,7 @@ class Parser:
     def parse_func_argu(self):
         if self.stop: return
         if self.in_predict(PREDICT_SET['<func_argu>']):  # prod 159
-            self._push_context('func_args')
             self.parse_assign_rhs()
-            self._pop_context()
             if self.stop: return
             self.parse_func_mult_call()
             if self.stop: return
@@ -1744,9 +1667,7 @@ class Parser:
         if self.in_predict(PREDICT_SET['<func_mult_call>']):  # prod 161
             self.match_token(',')
             if self.stop: return
-            self._push_context('func_args')
             self.parse_assign_rhs()
-            self._pop_context()
             if self.stop: return
             self.parse_func_mult_call()
             if self.stop: return
@@ -2250,6 +2171,8 @@ class Parser:
             if self.stop: return
             self.match_token('id')
             if self.stop: return
+            self.parse_id_type3()
+            if self.stop: return
             self.match_token(';')
             if self.stop: return
             return
@@ -2263,7 +2186,7 @@ class Parser:
             return
         self.syntax_error('<assign_statement>')
 
-    # Productions 231-233: <id_type4>
+    # Productions 231-232: <id_type4>
     def parse_id_type4(self):
         if self.stop: return
         if self.in_predict(PREDICT_SET['<id_type4>']):  # prod 231
@@ -2275,10 +2198,6 @@ class Parser:
             if self.stop: return
             return
         elif self.in_predict(PREDICT_SET['<id_type4_1>']):  # prod 232
-            self.parse_unary_op()
-            if self.stop: return
-            return
-        elif self.in_predict(PREDICT_SET['<id_type4_2>']):  # prod 233
             self.parse_id_type3()
             if self.stop: return
             self.parse_assign_end()
@@ -2286,23 +2205,23 @@ class Parser:
             return
         self.syntax_error('<id_type4>')
 
-    # Productions 234-235: <assign_end>
+    # Productions 233-235: <assign_end>
     def parse_assign_end(self):
         if self.stop: return
-        if self.in_predict(PREDICT_SET['<assign_end>']):  # prod 234
-            self.parse_compound_op()
-            if self.stop: return
-            self._push_context('assignment_rhs')
-            self.parse_expression()
-            self._pop_context()
+        if self.in_predict(PREDICT_SET['<assign_end>']):  # prod 233
+            self.parse_unary_op()
             if self.stop: return
             return
-        elif self.in_predict(PREDICT_SET['<assign_end_1>']):  # prod 235
+        elif self.in_predict(PREDICT_SET['<assign_end_1>']): # prod 234
+            self.parse_compound_op()
+            if self.stop: return
+            self.parse_expression()
+            if self.stop: return
+            return
+        elif self.in_predict(PREDICT_SET['<assign_end_2>']):  # prod 235
             self.match_token('=')
             if self.stop: return
-            self._push_context('assignment_rhs')
             self.parse_assign_rhs()
-            self._pop_context()
             if self.stop: return
             return
         self.syntax_error('<assign_end>')
@@ -2427,9 +2346,7 @@ class Parser:
             if self.stop: return
             self.match_token('(')
             if self.stop: return
-            self._push_context('if_condition')
             self.parse_condition()
-            self._pop_context()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2563,9 +2480,7 @@ class Parser:
             if self.stop: return
             self.match_token('(')
             if self.stop: return
-            self._push_context('switch_condition')
             self.parse_condition()
-            self._pop_context()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2812,9 +2727,7 @@ class Parser:
             if self.stop: return
             self.match_token('(')
             if self.stop: return
-            self._push_context('while_condition')
             self.parse_condition()
-            self._pop_context()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
@@ -2843,9 +2756,7 @@ class Parser:
             if self.stop: return
             self.match_token('(')
             if self.stop: return
-            self._push_context('while_condition')
             self.parse_condition()
-            self._pop_context()
             if self.stop: return
             self.match_token(')')
             if self.stop: return
