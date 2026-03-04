@@ -68,59 +68,59 @@ def _build_expected_sets() -> dict:
 _EXPECTED: dict = _build_expected_sets()
 
 # ---------------------------------------------------------------------------
-# Expression-like NTs whose _EXPECTED sets are polluted by FOLLOW tokens.
-# For these NTs we filter the expected set down to only the surface-level
-# FIRST tokens that a programmer would actually type to start (or continue)
-# an expression, keeping the error messages clean and accurate.
+# Error-message filtering — cosmetic only, never affects parsing decisions.
+#
+# The original FOLLOW sets bleed delimiter / statement tokens into the
+# expected-token lists of expression and suffix NTs because those NTs are
+# nullable and their epsilon production's predict set is FOLLOW(NT).
+# We strip only the tokens that are impossible as an expression starter or
+# continuation in that syntactic position.
+#
+# Rules:
+#   _EXPR_START_ONLY_NTS  — NT fires when an expression must begin here.
+#                           Remove FOLLOW-only noise: ; } ) ] and
+#                           statement-keyword tokens.
+#   _EXPR_CONT_NTS        — NT fires after a sub-expression; either a binary
+#                           operator continues it or the expression ends.
+#                           Keep operators + expression starters; remove
+#                           delimiter-only noise.
+#   _EXPR_SUFFIX_NTS      — NT fires after an id; only suffix tokens ([, .,
+#                           (, ++, --) are real productions.
+#                           Remove everything that is purely FOLLOW bleed.
+#
+# Fallback: if filtering empties the set, the unfiltered raw set is used.
 # ---------------------------------------------------------------------------
 
-# Tokens that can legitimately *start* an expression / sub-expression.
-_EXPR_START_TOKENS: frozenset = frozenset({
+# Tokens that can open a new expression (FIRST of <expression>).
+_EXPR_FIRST: frozenset = frozenset({
     'id', '(', 'tile_lit', 'glass_lit', 'brick_lit', 'solid', 'fragile',
     'wall_lit', '-', '!', '++', '--',
 })
 
-# Binary / relational operators that continue an expression.
-_EXPR_CONT_TOKENS: frozenset = frozenset({
+# Binary / relational / logical operators (FIRST of <operator>).
+_BINOP_TOKENS: frozenset = frozenset({
     '+', '-', '*', '/', '%',
     '<', '<=', '>', '>=', '==', '!=', '&&', '||',
 })
 
-# Tokens that are meaningful follow/delimiter tokens that we want to REMOVE
-# from the expected list for expression-like NTs.
-_EXPR_FOLLOW_NOISE: frozenset = frozenset({
-    # assignment operators
-    '=', '+=', '-=', '*=', '/=', '%=',
-    # delimiters / statement terminators
-    ';', ',', ']', ')',
-    # keywords that are never expression starters
-    'if', 'else', 'for', 'while', 'do', 'crack', 'mend', 'home',
-    'write', 'view', 'room', 'door', 'ground',
-    'wall', 'tile', 'glass', 'brick', 'beam', 'field',
-    'house', 'cement', 'roof', 'blueprint',
-    # block delimiters
-    '{', '}',
-    # misc
-    '&', ':', '$',
+# Tokens that are ONLY ever in expression FOLLOW sets — they terminate or
+# delimit an expression but can never start or continue one.
+# We keep this list narrow: only unambiguous delimiters / terminators.
+_FOLLOW_ONLY_NOISE: frozenset = frozenset({
+    ';', '}', ')', ']',
 })
 
-# NTs whose error reporting should show only expression-start tokens.
+# NTs that strictly require an expression to start here.
+# Only NTs whose non-epsilon productions all begin with FIRST(<expression>).
 _EXPR_START_ONLY_NTS: frozenset = frozenset({
     '<expression>',
     '<assign_rhs>',
     '<condition>',
     '<for_exp>',
-    '<prefix_exp>',
-    '<assign_prefix_exp>',
-    '<prefix_cond_exp>',
-    '<prefix_for_exp>',
-    '<id_val>',
-    '<func_argu>',
 })
 
-# NTs whose error reporting should show expression-start tokens plus the
-# binary/relational continuation operators (they fire when we expect more
-# of an already-started expression OR an operator to continue it).
+# NTs that fire when an expression continuation is expected (operator or end).
+# Their non-epsilon productions begin with a binary operator.
 _EXPR_CONT_NTS: frozenset = frozenset({
     '<exp_op>',
     '<assign_exp>',
@@ -128,48 +128,47 @@ _EXPR_CONT_NTS: frozenset = frozenset({
     '<for_op>',
 })
 
-# NTs where only the suffix-access tokens are relevant ([], ., (), ++, --).
+# NTs that fire after an identifier and only accept suffix/access tokens.
+# Their non-epsilon productions begin with [, ., (, ++, or --.
 _EXPR_SUFFIX_NTS: frozenset = frozenset({
     '<id_type>',
     '<id_type2>',
     '<id_type3>',
     '<arr_struct>',
-    '<array_index>',
-    '<array_index2>',
-    '<struct_id>',
-    '<struct_array>',
-    '<func_call>',
     '<postfix_op>',
-    '<unary_op>',
 })
 
 _SUFFIX_TOKENS: frozenset = frozenset({'[', '.', '(', '++', '--'})
 
 
 def _filter_expected_for_nt(base_nt: str, raw: set) -> set:
-    """Return a cleaned expected-token set for *base_nt*.
+    """Return a filtered expected-token set for error reporting only.
 
-    Removes FOLLOW-set noise that bleeds in due to FIRST/FOLLOW pollution in
-    the original grammar.  Only affects error reporting — parsing logic is
-    untouched.
+    Removes FOLLOW-set noise from expression-like NTs.  If filtering would
+    produce an empty set the original raw set is returned unchanged.
     """
     if base_nt in _EXPR_START_ONLY_NTS:
-        # Keep only tokens that can start an expression.
-        filtered = raw & _EXPR_START_TOKENS
+        # Only expression-starting tokens are valid here.
+        filtered = raw & _EXPR_FIRST
         return filtered if filtered else raw
 
     if base_nt in _EXPR_CONT_NTS:
-        # Keep expression starters plus binary continuation operators.
-        filtered = raw & (_EXPR_START_TOKENS | _EXPR_CONT_TOKENS)
+        # Either a binary operator continues the expression, or it ends.
+        # Strip only the pure-delimiter noise; keep operators and expr starters
+        # so the message stays informative when a continuation is possible.
+        filtered = raw - _FOLLOW_ONLY_NOISE
         return filtered if filtered else raw
 
     if base_nt in _EXPR_SUFFIX_NTS:
-        # Keep only suffix/access tokens.
+        # Only suffix / access tokens come from real productions here.
         filtered = raw & _SUFFIX_TOKENS
         return filtered if filtered else raw
 
-    # For all other NTs, strip only the most egregious noise tokens.
-    return raw - _EXPR_FOLLOW_NOISE if (raw - _EXPR_FOLLOW_NOISE) else raw
+    # All other NTs: strip only unambiguous delimiter noise that can never
+    # be a valid expected token outside of FOLLOW bleed on nullable rules.
+    # We intentionally keep keywords, operators, and identifiers untouched.
+    filtered = raw - _FOLLOW_ONLY_NOISE
+    return filtered if filtered else raw
 
 
 class Parser:
@@ -265,9 +264,8 @@ class Parser:
                 expected.discard(';')
                 expected.add(')')
 
-        # Filter out FOLLOW-set noise from expression-like NTs so that the
-        # error message shows only tokens the user would actually write.
-        # This is purely cosmetic — it never affects parsing decisions.
+        # Apply cosmetic filtering to remove FOLLOW-set noise from expression
+        # and suffix NTs.  Parsing logic is not affected.
         expected = _filter_expected_for_nt(base, expected)
 
         self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {sorted(expected)}")
