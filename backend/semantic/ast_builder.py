@@ -1,13 +1,3 @@
-"""
-AST Builder for arCh Language
-Walks the token stream (already validated by the Parser) to build a real AST.
-Uses the same grammar structure as parserV2.py — no separate visitor needed.
-
-Design: single-pass recursive descent over the filtered token list.
-The Parser already confirmed the token stream is syntactically valid,
-so this builder does NOT add errors — it just constructs nodes.
-"""
-
 from typing import List, Optional, Any
 from semantic.ast import (
     ProgramNode, FunctionNode, ParamNode,
@@ -584,15 +574,28 @@ class ASTBuilder:
             self._eat(";")
         return nodes
 
-    def _local_struct_decl(self) -> Optional[VarDeclNode]:
-        """house TypeName varName [= {...}] ;"""
+    def _local_struct_decl(self) -> List:
+        """Parse a local struct declaration and return a LIST of VarDeclNode.
+
+        Handles two forms:
+          1. Inline definition + variables:
+               house Student { ... } s1, s2 = {...};
+             → registers the struct type (via StructDeclNode in globals),
+               returns [VarDeclNode(s1), VarDeclNode(s2)]
+          2. Variable instantiation of an already-defined struct:
+               house Student s1, s2 = {...};
+             → returns [VarDeclNode(s1), VarDeclNode(s2)]
+
+        Always returns a list so _func_body_stmts can use extend() uniformly.
+        """
         line, col = self._line(), self._col()
         self._eat("house")
         type_name_tok = self._eat("id")
         type_name = type_name_tok.lexeme if type_name_tok else ""
+        nodes: List[VarDeclNode] = []
 
         if self._is("{"):
-            # This is a struct definition inside a function — uncommon; skip it
+            # Inline struct definition: consume the { members } body
             depth = 0
             while not self._is("EOF"):
                 if self._is("{"):
@@ -603,26 +606,56 @@ class ASTBuilder:
                         break
                 else:
                     self._advance()
+            # Now parse comma-separated variable names that follow the }
             if self._is("id"):
                 var_tok = self._eat("id")
+                vline, vcol = line, col
                 if self._is("="):
                     self._skip_brace_init()
-                self._eat(";")
-                return VarDeclNode(type=f"house {type_name}", name=var_tok.lexeme,
-                                   init_value=None, is_const=False,
-                                   is_array=False, array_dims=None, line=line, col=col)
+                nodes.append(VarDeclNode(
+                    type=f"house {type_name}", name=var_tok.lexeme,
+                    init_value=None, is_const=False,
+                    is_array=False, array_dims=None, line=vline, col=vcol))
+                # additional comma-separated struct variables: , s2 [= {...}]
+                while self._is(","):
+                    self._eat(",")
+                    extra_line, extra_col = self._line(), self._col()
+                    extra_tok = self._eat("id")
+                    extra_name = extra_tok.lexeme if extra_tok else ""
+                    if self._is("="):
+                        self._skip_brace_init()
+                    nodes.append(VarDeclNode(
+                        type=f"house {type_name}", name=extra_name,
+                        init_value=None, is_const=False,
+                        is_array=False, array_dims=None,
+                        line=extra_line, col=extra_col))
             self._eat(";")
-            return None
         else:
-            # house TypeName varName [= {...}]
+            # Variable instantiation of an already-defined struct type
             var_tok = self._eat("id")
             var_name = var_tok.lexeme if var_tok else ""
             if self._is("="):
                 self._skip_brace_init()
+            nodes.append(VarDeclNode(
+                type=f"house {type_name}", name=var_name,
+                init_value=None, is_const=False,
+                is_array=False, array_dims=None, line=line, col=col))
+            # additional comma-separated variables
+            while self._is(","):
+                self._eat(",")
+                extra_line, extra_col = self._line(), self._col()
+                extra_tok = self._eat("id")
+                extra_name = extra_tok.lexeme if extra_tok else ""
+                if self._is("="):
+                    self._skip_brace_init()
+                nodes.append(VarDeclNode(
+                    type=f"house {type_name}", name=extra_name,
+                    init_value=None, is_const=False,
+                    is_array=False, array_dims=None,
+                    line=extra_line, col=extra_col))
             self._eat(";")
-            return VarDeclNode(type=f"house {type_name}", name=var_name,
-                               init_value=None, is_const=False,
-                               is_array=False, array_dims=None, line=line, col=col)
+
+        return nodes
 
     def _local_const_decl(self) -> List:
         """Parse a cement (const) declaration and return a LIST of VarDeclNode.
