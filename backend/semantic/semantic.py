@@ -467,10 +467,11 @@ class SemanticAnalyzer:
     # ── assignment ────────────────────────────────────────────────────────────
 
     def visit_assign(self, node: AssignNode):
-        target_type = self.visit_expr(node.target)
-        if target_type is None:
-            return
-
+        # ── mark initialized BEFORE visiting the target expression ───────────
+        # visit_expr(node.target) calls visit_id() on the LHS variable, which
+        # checks symbol.initialized.  If we marked it after, the use-before-init
+        # check would incorrectly fire on every assignment to an uninitialized
+        # variable — even though an assignment IS the initialization event.
         if isinstance(node.target, IdNode):
             symbol = self.symbol_table.lookup(node.target.name)
             if symbol and symbol.is_const:
@@ -478,9 +479,13 @@ class SemanticAnalyzer:
                     f"Cannot assign to constant '{node.target.name}'",
                     node.line, node.col)
                 return
-            # Mark as initialized now
+            # Mark initialized now, before visit_expr reads the flag
             if symbol and not symbol.initialized:
                 symbol.initialized = True
+
+        target_type = self.visit_expr(node.target)
+        if target_type is None:
+            return
 
         value_type = self.visit_expr(node.value)
         if value_type is None:
