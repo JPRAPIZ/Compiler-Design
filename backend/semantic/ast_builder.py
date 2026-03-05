@@ -477,12 +477,22 @@ class ASTBuilder:
         stmts = []
         while not self._is("}", "EOF"):
             s = self._body_item()
-            if s is not None:
+            if s is None:
+                pass
+            elif isinstance(s, list):
+                # multi-variable declaration returns a list of VarDeclNodes
+                stmts.extend(s)
+            else:
                 stmts.append(s)
         return stmts
 
     def _body_item(self):
-        """One declaration or statement inside a function body."""
+        """One declaration or statement inside a function body.
+
+        NOTE: _local_var_decl() and _local_const_decl() may return a LIST of
+        VarDeclNode when multiple variables are declared in one statement
+        (e.g.  tile a = 1, b = 2, c = 3;).  Callers must handle both cases.
+        """
         # Local variable declaration
         if self._is("wall", "tile", "glass", "brick", "beam"):
             return self._local_var_decl()
@@ -497,31 +507,52 @@ class ASTBuilder:
     # Local declarations
     # ------------------------------------------------------------------
 
-    def _local_var_decl(self) -> VarDeclNode:
+    def _local_var_decl(self) -> List:
+        """Parse a local variable declaration and return a LIST of VarDeclNode.
+
+        One VarDeclNode is produced per declared name so that the semantic
+        analyzer can check, initialize, and register each variable independently.
+
+        Examples
+        --------
+        tile x;                    -> [VarDeclNode(x)]
+        tile a = 1, b = 2, c = 3; -> [VarDeclNode(a,1), VarDeclNode(b,2), VarDeclNode(c,3)]
+        tile arr[5];               -> [VarDeclNode(arr, is_array=True, dims=[5])]
+        """
         line, col = self._line(), self._col()
         dtype = self._data_type_str()
         name_tok = self._eat("id")
         name = name_tok.lexeme if name_tok else ""
+        nodes: List[VarDeclNode] = []
 
         if dtype == "wall":
-            # wall id [= wall_init] [, id ...] ;
+            # wall id [= wall_init] [, id [= wall_init]] ... ;
             init_val = None
             if self._is("="):
                 self._eat("=")
                 init_val = self._wall_init_expr()
             elif self._is("["):
                 self._array_dec_dims()
+            nodes.append(VarDeclNode(type="wall", name=name, init_value=init_val,
+                                     is_const=False, is_array=False, array_dims=None,
+                                     line=line, col=col))
             while self._is(","):
                 self._eat(",")
-                self._eat("id")
+                extra_line, extra_col = self._line(), self._col()
+                extra_tok = self._eat("id")
+                extra_name = extra_tok.lexeme if extra_tok else ""
+                extra_init = None
                 if self._is("="):
                     self._eat("=")
-                    self._wall_init_expr()
+                    extra_init = self._wall_init_expr()
+                nodes.append(VarDeclNode(type="wall", name=extra_name,
+                                         init_value=extra_init,
+                                         is_const=False, is_array=False,
+                                         array_dims=None,
+                                         line=extra_line, col=extra_col))
             self._eat(";")
-            return VarDeclNode(type="wall", name=name, init_value=init_val,
-                               is_const=False, is_array=False, array_dims=None,
-                               line=line, col=col)
         else:
+            # non-wall: may be array or scalar, may have comma-separated names
             init_val = None
             is_array = False
             dims = None
@@ -531,16 +562,27 @@ class ASTBuilder:
             elif self._is("["):
                 is_array = True
                 dims = self._array_dec_dims()
-            while self._is(","):
-                self._eat(",")
-                self._eat("id")
-                if self._is("="):
-                    self._eat("=")
-                    self._expression()
+            nodes.append(VarDeclNode(type=dtype, name=name, init_value=init_val,
+                                     is_const=False, is_array=is_array,
+                                     array_dims=dims, line=line, col=col))
+            # Only scalar (non-array) declarations allow comma-separated names
+            if not is_array:
+                while self._is(","):
+                    self._eat(",")
+                    extra_line, extra_col = self._line(), self._col()
+                    extra_tok = self._eat("id")
+                    extra_name = extra_tok.lexeme if extra_tok else ""
+                    extra_init = None
+                    if self._is("="):
+                        self._eat("=")
+                        extra_init = self._expression()
+                    nodes.append(VarDeclNode(type=dtype, name=extra_name,
+                                             init_value=extra_init,
+                                             is_const=False, is_array=False,
+                                             array_dims=None,
+                                             line=extra_line, col=extra_col))
             self._eat(";")
-            return VarDeclNode(type=dtype, name=name, init_value=init_val,
-                               is_const=False, is_array=is_array, array_dims=dims,
-                               line=line, col=col)
+        return nodes
 
     def _local_struct_decl(self) -> Optional[VarDeclNode]:
         """house TypeName varName [= {...}] ;"""
@@ -582,12 +624,18 @@ class ASTBuilder:
                                init_value=None, is_const=False,
                                is_array=False, array_dims=None, line=line, col=col)
 
-    def _local_const_decl(self) -> Optional[VarDeclNode]:
+    def _local_const_decl(self) -> List:
+        """Parse a cement (const) declaration and return a LIST of VarDeclNode.
+
+        Each comma-separated name produces its own VarDeclNode so the semantic
+        analyzer can validate each constant independently.
+        """
         line, col = self._line(), self._col()
         self._eat("cement")
         dtype = self._data_type_str()
         name_tok = self._eat("id")
         name = name_tok.lexeme if name_tok else ""
+        nodes: List[VarDeclNode] = []
 
         init_val = None
         if dtype == "wall":
@@ -606,17 +654,27 @@ class ASTBuilder:
                 init_val = self._expression()
             elif self._is("["):
                 self._array_dec_dims()
-        # trailing comma-consts
+
+        nodes.append(VarDeclNode(type=dtype, name=name, init_value=init_val,
+                                 is_const=True, is_array=False, array_dims=None,
+                                 line=line, col=col))
+        # trailing comma-separated const declarations
         while self._is(","):
             self._eat(",")
-            self._eat("id")
+            extra_line, extra_col = self._line(), self._col()
+            extra_tok = self._eat("id")
+            extra_name = extra_tok.lexeme if extra_tok else ""
+            extra_init = None
             if self._is("="):
                 self._eat("=")
-                self._expression()
+                extra_init = self._expression()
+            nodes.append(VarDeclNode(type=dtype, name=extra_name,
+                                     init_value=extra_init,
+                                     is_const=True, is_array=False,
+                                     array_dims=None,
+                                     line=extra_line, col=extra_col))
         self._eat(";")
-        return VarDeclNode(type=dtype, name=name, init_value=init_val,
-                           is_const=True, is_array=False, array_dims=None,
-                           line=line, col=col)
+        return nodes
 
     # ------------------------------------------------------------------
     # Statements

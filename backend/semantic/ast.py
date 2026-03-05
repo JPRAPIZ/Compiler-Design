@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, Optional, List
 
 
 # ============================================================================
@@ -20,8 +20,8 @@ class ASTNode:
 @dataclass
 class ProgramNode(ASTNode):
     """Root node: <program> → <global> <program_body>"""
-    globals: list['GlobalDeclNode']
-    functions: list['FunctionNode']
+    globals: list  # List[GlobalDeclNode]
+    functions: list  # List[FunctionNode]
 
 
 @dataclass
@@ -29,8 +29,8 @@ class FunctionNode(ASTNode):
     """Function definition: wall/return_type id(...) { ... }"""
     return_type: str  # 'tile', 'glass', 'brick', 'beam', 'field', 'wall'
     name: str
-    params: list['ParamNode']
-    body: list[ASTNode]  # statements and declarations
+    params: list  # List[ParamNode]
+    body: list    # List[ASTNode]  — statements and declarations
     is_blueprint: bool = False  # True for blueprint() entry point
 
 
@@ -53,20 +53,46 @@ class GlobalDeclNode(ASTNode):
 
 @dataclass
 class VarDeclNode(GlobalDeclNode):
-    """Variable declaration: type id = expr"""
+    """Variable declaration: type id = expr
+
+    Fields (all preserved from original):
+      type        — primitive type string ('tile', 'glass', 'brick', 'beam', 'wall')
+                    or 'house <StructName>' for struct variables
+      name        — identifier string
+      init_value  — initializer expression node, or None
+      is_const    — True when declared with 'cement'
+      is_array    — True when declared with array dimensions
+      array_dims  — list of dimension sizes (or None)
+
+    NEW fields:
+      struct_type_name — when type starts with 'house', stores the bare struct name
+                         so that member lookups work without string-splitting.
+    """
     type: str
     name: str
     init_value: Optional['ExprNode'] = None
     is_const: bool = False  # cement keyword
     is_array: bool = False
-    array_dims: list[int] = None  # For arrays
+    array_dims: list = None  # List[int]  For arrays
+
+    # NEW: for house-typed variables, records the struct type name separately
+    # so the semantic analyzer can call symbol_table.get_struct() directly.
+    # Populated by ast_builder when it parses "house TypeName varName".
+    struct_type_name: Optional[str] = None
+
+    def __post_init__(self):
+        # Auto-derive struct_type_name from type field if not set
+        # e.g. type="house Area" → struct_type_name="Area"
+        if self.struct_type_name is None and isinstance(self.type, str):
+            if self.type.startswith("house "):
+                self.struct_type_name = self.type[6:].strip()
 
 
 @dataclass
 class StructDeclNode(GlobalDeclNode):
     """Struct declaration: house id { members }"""
     name: str
-    members: list['StructMemberNode']
+    members: list  # List[StructMemberNode]
 
 
 @dataclass
@@ -75,7 +101,7 @@ class StructMemberNode(ASTNode):
     type: str
     name: str
     is_array: bool = False
-    array_dims: list[int] = None
+    array_dims: list = None  # List[int]
 
 
 # ============================================================================
@@ -100,21 +126,21 @@ class AssignNode(StatementNode):
 class IfNode(StatementNode):
     """If statement: if (cond) { body } else { else_body }"""
     condition: 'ExprNode'
-    then_body: list[ASTNode]
-    else_body: Optional[list[ASTNode]] = None
+    then_body: list  # List[ASTNode]
+    else_body: Optional[list] = None  # Optional[List[ASTNode]]
 
 
 @dataclass
 class WhileNode(StatementNode):
     """While loop: while (cond) { body }"""
     condition: 'ExprNode'
-    body: list[ASTNode]
+    body: list  # List[ASTNode]
 
 
 @dataclass
 class DoWhileNode(StatementNode):
     """Do-while loop: do { body } while (cond)"""
-    body: list[ASTNode]
+    body: list  # List[ASTNode]
     condition: 'ExprNode'
 
 
@@ -124,21 +150,21 @@ class ForNode(StatementNode):
     init: Optional[ASTNode]  # VarDeclNode or AssignNode
     condition: 'ExprNode'
     increment: 'ExprNode'
-    body: list[ASTNode]
+    body: list  # List[ASTNode]
 
 
 @dataclass
 class SwitchNode(StatementNode):
     """Switch: room (expr) { cases }"""
     expr: 'ExprNode'
-    cases: list['CaseNode']
+    cases: list  # List[CaseNode]
 
 
 @dataclass
 class CaseNode(ASTNode):
     """Case: door value: body or ground: body"""
     value: Optional['ExprNode']  # None for ground (default)
-    body: list[ASTNode]
+    body: list  # List[ASTNode]
     is_default: bool = False
 
 
@@ -165,7 +191,7 @@ class IONode(StatementNode):
     """I/O: view(...) or write(...)"""
     io_type: str  # 'view' or 'write'
     format_string: str
-    args: list['ExprNode']
+    args: list  # List[ExprNode]
 
 
 # ============================================================================
@@ -175,32 +201,34 @@ class IONode(StatementNode):
 @dataclass
 class ExprNode(ASTNode):
     """Base class for expressions"""
-    pass # expr_type: Optional[str] = None
+    pass  # expr_type: Optional[str] = None
 
 
 @dataclass
 class BinaryOpNode(ExprNode):
     """Binary operation: left op right"""
-    left: ExprNode
+    left: 'ExprNode'
     operator: str
-    right: ExprNode
-    expr_type: Optional[str] = None  # ← Move this line to end
+    right: 'ExprNode'
+    expr_type: Optional[str] = None
 
 
 @dataclass
 class UnaryOpNode(ExprNode):
     """Unary operation: op expr"""
     operator: str  # !, ++, --, - (negation)
-    operand: ExprNode
+    operand: 'ExprNode'
     is_prefix: bool = True
     expr_type: Optional[str] = None
+
 
 @dataclass
 class LiteralNode(ExprNode):
     """Literal value: 123, 3.14, "string", solid, fragile"""
     value: Any
-    literal_type: str  # 'tile', 'glass', 'brick', 'wall', 'solid', 'fragile'
+    literal_type: str  # 'tile', 'glass', 'brick', 'wall', 'beam'
     expr_type: Optional[str] = None
+
 
 @dataclass
 class IdNode(ExprNode):
@@ -208,43 +236,87 @@ class IdNode(ExprNode):
     name: str
     expr_type: Optional[str] = None
 
+
 @dataclass
 class ArrayAccessNode(ExprNode):
     """Array access: array[index1][index2]"""
-    array: ExprNode
-    indices: list[ExprNode]
+    array: 'ExprNode'
+    indices: list  # List[ExprNode]
     expr_type: Optional[str] = None
+
 
 @dataclass
 class StructAccessNode(ExprNode):
     """Struct member access: struct.member"""
-    struct: ExprNode
+    struct: 'ExprNode'
     member: str
     expr_type: Optional[str] = None
+
 
 @dataclass
 class FunctionCallNode(ExprNode):
     """Function call: func(args)"""
     func_name: str
-    args: list[ExprNode]
+    args: list  # List[ExprNode]
     expr_type: Optional[str] = None
+
 
 @dataclass
 class WallConcatNode(ExprNode):
     """Wall (string) concatenation: wall1 + wall2"""
-    parts: list[ExprNode]  # List of wall expressions to concatenate
+    parts: list  # List[ExprNode]  — wall expressions to concatenate
     expr_type: Optional[str] = None
+
 
 # ============================================================================
 # Type Information
 # ============================================================================
 
+# ---------------------------------------------------------------------------
+# Centralised type hierarchy — used by TypeInfo and SemanticAnalyzer.
+#
+# The language supports BOTH promotion (widening) and demotion (narrowing)
+# between brick / beam / tile / glass, exactly like C.
+#
+#   brick  (char)    — narrowest  rank 0
+#   beam   (bool)    — rank 1
+#   tile   (int)     — rank 2
+#   glass  (float)   — widest     rank 3
+#
+# wall (string) is COMPLETELY ISOLATED: no casting to or from any other type.
+#
+# Promotion  (e.g. brick → tile): always safe, no precision loss.
+# Demotion   (e.g. glass → tile): allowed but may truncate, just like C.
+#
+# Previous name _NUMERIC_RANK is kept as an alias so existing call-sites
+# that check `x in _NUMERIC_RANK` still work — they just now also cover beam.
+# ---------------------------------------------------------------------------
+TYPE_ORDER: dict = {
+    'brick': 0,   # char     — narrowest
+    'beam':  1,   # bool
+    'tile':  2,   # int
+    'glass': 3,   # float    — widest
+}
+
+# Alias for backward compatibility with existing isinstance / membership checks
+_NUMERIC_RANK: dict = TYPE_ORDER
+
+# The set of all types that participate in implicit casting (wall excluded)
+_CASTABLE_TYPES: frozenset = frozenset(TYPE_ORDER.keys())
+
+
 @dataclass
 class TypeInfo:
-    """Type information for semantic analysis"""
+    """Type information for semantic analysis.
+
+    Preserved from original: base_type, is_array, array_dims, struct_name,
+    is_const, is_numeric(), is_bool(), is_string(), can_cast_to().
+
+    NEW helpers: wider_numeric(), is_void(), is_struct().
+    """
     base_type: str  # 'tile', 'glass', 'brick', 'beam', 'wall', 'field', 'house'
     is_array: bool = False
-    array_dims: list[int] = None
+    array_dims: list = None  # List[int]
     struct_name: Optional[str] = None  # For house types
     is_const: bool = False
 
@@ -256,39 +328,87 @@ class TypeInfo:
             return f'house {self.struct_name}'
         return self.base_type
 
+    # ── type predicates ───────────────────────────────────────────────────────
+
     def is_numeric(self) -> bool:
-        """Check if type is numeric (tile, glass, brick)"""
-        return self.base_type in ('tile', 'glass', 'brick')
+        """True for all types in the implicit cast hierarchy: brick, beam, tile, glass."""
+        return self.base_type in TYPE_ORDER
 
     def is_bool(self) -> bool:
-        """Check if type is boolean (beam)"""
+        """beam"""
         return self.base_type == 'beam'
 
     def is_string(self) -> bool:
-        """Check if type is string (wall)"""
+        """wall"""
         return self.base_type == 'wall'
 
+    def is_void(self) -> bool:
+        """field (void return type)"""
+        return self.base_type == 'field'
+
+    def is_struct(self) -> bool:
+        """house <n>"""
+        return self.base_type == 'house'
+
+    # ── promotion / demotion ──────────────────────────────────────────────────
+
+    def wider_numeric(self, other: 'TypeInfo') -> Optional['TypeInfo']:
+        """Return the dominant (wider) of two castable types.
+
+        For EXPRESSION EVALUATION, always pick the WIDER type so precision
+        is preserved during computation.
+        Returns None if either type is not in TYPE_ORDER (e.g. wall, house).
+
+        Examples
+        --------
+        brick.wider_numeric(tile)  -> tile   (rank 2 > rank 0)
+        tile.wider_numeric(glass)  -> glass  (rank 3 > rank 2)
+        beam.wider_numeric(glass)  -> glass
+        """
+        if self.base_type not in TYPE_ORDER or other.base_type not in TYPE_ORDER:
+            return None
+        if TYPE_ORDER[self.base_type] >= TYPE_ORDER[other.base_type]:
+            return self
+        return other
+
+    # ── assignment / cast compatibility ───────────────────────────────────────
+
     def can_cast_to(self, target: 'TypeInfo') -> bool:
-        """Check if this type can be implicitly cast to target type"""
-        # Wall (string) has NO implicit casting
+        """Check whether this type can be implicitly cast to *target*.
+
+        Rules (aligned with language specification):
+          1. Same base type  -> always valid (struct: same name; array: same dims).
+          2. wall is COMPLETELY ISOLATED.
+             wall->X  and  X->wall  are both invalid (except wall->wall).
+          3. Both types are in TYPE_ORDER (brick/beam/tile/glass) -> VALID.
+             The language allows BOTH promotion AND demotion, like C.
+               Promotions: brick->beam, beam->tile, tile->glass, brick->glass ...
+               Demotions:  glass->tile, tile->beam, beam->brick ...
+             Demotion may truncate values but is NOT a type error.
+          4. Arrays: cross-type array assignment is not allowed.
+          5. Structs: must be the same named struct.
+          6. Everything else: exact match only.
+        """
+        # Rule 1: exact match
+        if self.base_type == target.base_type:
+            if self.base_type == 'house':
+                return self.struct_name == target.struct_name
+            if self.is_array or target.is_array:
+                return (self.is_array == target.is_array
+                        and self.array_dims == target.array_dims)
+            return True
+
+        # Rule 2: wall isolation
         if self.is_string() or target.is_string():
-            return self.base_type == target.base_type
+            return False
 
-        # Arrays must match exactly
+        # Rule 4: cross-type array cast not allowed
         if self.is_array or target.is_array:
-            return (self.is_array == target.is_array and
-                    self.base_type == target.base_type and
-                    self.array_dims == target.array_dims)
+            return False
 
-        # Numeric type hierarchy: tile → glass → brick
-        numeric_hierarchy = {'tile': 0, 'glass': 1, 'brick': 2}
+        # Rule 3: both in castable hierarchy -> valid in both directions
+        if self.base_type in TYPE_ORDER and target.base_type in TYPE_ORDER:
+            return True
 
-        if self.base_type in numeric_hierarchy and target.base_type in numeric_hierarchy:
-            return numeric_hierarchy[self.base_type] <= numeric_hierarchy[target.base_type]
-
-        # beam (bool) can only be beam
-        if self.is_bool() or target.is_bool():
-            return self.base_type == target.base_type
-
-        # Exact match
-        return self.base_type == target.base_type
+        # Rule 6: anything else requires exact match (already checked in rule 1)
+        return False
