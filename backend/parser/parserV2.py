@@ -68,106 +68,80 @@ def _build_expected_sets() -> dict:
 _EXPECTED: dict = _build_expected_sets()
 
 # ---------------------------------------------------------------------------
-# Error-message filtering — cosmetic only, never affects parsing decisions.
+# Error-message filtering - cosmetic only, zero effect on parsing decisions.
 #
-# The original FOLLOW sets bleed delimiter / statement tokens into the
-# expected-token lists of expression and suffix NTs because those NTs are
-# nullable and their epsilon production's predict set is FOLLOW(NT).
-# We strip only the tokens that are impossible as an expression starter or
-# continuation in that syntactic position.
+# Root cause
+# ----------
+# Every nullable NT has an epsilon production whose predict-set equals
+# FOLLOW(NT).  _build_expected_sets() therefore unions FOLLOW(NT) into
+# _EXPECTED[NT].  For most NTs that is correct: the FOLLOW tokens are
+# perfectly valid things to show the programmer ("you can end here with X").
 #
-# Rules:
-#   _EXPR_START_ONLY_NTS  — NT fires when an expression must begin here.
-#                           Remove FOLLOW-only noise: ; } ) ] and
-#                           statement-keyword tokens.
-#   _EXPR_CONT_NTS        — NT fires after a sub-expression; either a binary
-#                           operator continues it or the expression ends.
-#                           Keep operators + expression starters; remove
-#                           delimiter-only noise.
-#   _EXPR_SUFFIX_NTS      — NT fires after an id; only suffix tokens ([, .,
-#                           (, ++, --) are real productions.
-#                           Remove everything that is purely FOLLOW bleed.
+# The only NTs where FOLLOW bleed is genuinely misleading are the three
+# binary-operator-continuation NTs:
 #
-# Fallback: if filtering empties the set, the unfiltered raw set is used.
+#   <exp_op>   - FIRST = 13 binary ops,  BLEED = {) ; , ]}
+#   <cond_op>  - FIRST = 13 binary ops,  BLEED = {)}
+#   <for_op>   - FIRST = 13 binary ops,  BLEED = {) ;}
+#
+# In these NTs the bleed tokens appear because the expression/condition can
+# END here (epsilon path), but if syntax_error fires it means the programmer
+# wrote a token that is NEITHER a continuation operator NOR a valid end-of-
+# expression delimiter - so showing the delimiters only adds noise.
+#
+# All other nullable NTs are intentionally left completely unfiltered:
+#
+#   <id_type>, <postfix_op>, <id_type3>, <array_index2>, <struct_array>
+#       BLEED includes ; ) , ] = += ... which ARE what the programmer needs
+#       to see when they omit a suffix or a closing delimiter.
+#       (Fixes T1: write('#s', BMI dssdad) - ) and , must show.)
+#       (Fixes T2b: wall d = ... + jansen - ; must show in <id_type>.)
+#
+#   <wall_op>, <mult_var>, <mult_wall>, <global_mult>, <initializer>, ...
+#       BLEED = {; , )} which are valid statement/list terminators.
+#       (Fixes T2a: wall d = "X" + "Y" - ; must show from <wall_op>.)
+#       (Fixes T3: tile a=1,b=2,...,d=4 - ; must show from <mult_var>.)
+#
+#   <view_argu>, <mult_view_argu>, <func_argu>, <func_mult_call>
+#       BLEED = {)} which IS a valid closing token the user may have omitted.
+#       (Fixes T6: view("Hello" ; - ) must show.)
+#
+#   <assign_exp>, <assign_rhs>
+#       Not filtered. BLEED = {) ; ,} are real end-of-assignment tokens.
+#
+# Fallback: if stripping would empty the set, the raw set is returned.
 # ---------------------------------------------------------------------------
 
-# Tokens that can open a new expression (FIRST of <expression>).
-_EXPR_FIRST: frozenset = frozenset({
-    'id', '(', 'tile_lit', 'glass_lit', 'brick_lit', 'solid', 'fragile',
-    'wall_lit', '-', '!', '++', '--',
-})
+# FIRST(<exp_op>) = 13 binary ops; ), ;, ,, ] come only from FOLLOW bleed.
+_EXP_OP_BLEED: frozenset = frozenset({')', ';', ',', ']'})
 
-# Binary / relational / logical operators (FIRST of <operator>).
-_BINOP_TOKENS: frozenset = frozenset({
-    '+', '-', '*', '/', '%',
-    '<', '<=', '>', '>=', '==', '!=', '&&', '||',
-})
+# FIRST(<cond_op>) = 13 binary ops; ) comes only from FOLLOW bleed.
+_COND_OP_BLEED: frozenset = frozenset({')'})
 
-# Tokens that are ONLY ever in expression FOLLOW sets — they terminate or
-# delimit an expression but can never start or continue one.
-# We keep this list narrow: only unambiguous delimiters / terminators.
-_FOLLOW_ONLY_NOISE: frozenset = frozenset({
-    ';', '}', ')', ']',
-})
+# FIRST(<for_op>) = 13 binary ops; ) and ; come only from FOLLOW bleed.
+# (Further narrowed at runtime by the context_stack check in syntax_error.)
+_FOR_OP_BLEED: frozenset = frozenset({')', ';'})
 
-# NTs that strictly require an expression to start here.
-# Only NTs whose non-epsilon productions all begin with FIRST(<expression>).
-_EXPR_START_ONLY_NTS: frozenset = frozenset({
-    '<expression>',
-    '<assign_rhs>',
-    '<condition>',
-    '<for_exp>',
-})
-
-# NTs that fire when an expression continuation is expected (operator or end).
-# Their non-epsilon productions begin with a binary operator.
-_EXPR_CONT_NTS: frozenset = frozenset({
-    '<exp_op>',
-    '<assign_exp>',
-    '<cond_op>',
-    '<for_op>',
-})
-
-# NTs that fire after an identifier and only accept suffix/access tokens.
-# Their non-epsilon productions begin with [, ., (, ++, or --.
-_EXPR_SUFFIX_NTS: frozenset = frozenset({
-    '<id_type>',
-    '<id_type2>',
-    '<id_type3>',
-    '<arr_struct>',
-    '<postfix_op>',
-})
-
-_SUFFIX_TOKENS: frozenset = frozenset({'[', '.', '(', '++', '--'})
+# Map: base NT -> exact bleed set to strip.
+# NTs absent from this map pass through completely unchanged.
+_NT_BLEED: dict = {
+    '<exp_op>':  _EXP_OP_BLEED,
+    '<cond_op>': _COND_OP_BLEED,
+    '<for_op>':  _FOR_OP_BLEED,
+}
 
 
 def _filter_expected_for_nt(base_nt: str, raw: set) -> set:
-    """Return a filtered expected-token set for error reporting only.
+    """Strip FOLLOW-bleed noise from the three operator-continuation NTs.
 
-    Removes FOLLOW-set noise from expression-like NTs.  If filtering would
-    produce an empty set the original raw set is returned unchanged.
+    Every other NT is returned completely unchanged so no legitimate token
+    is ever hidden from the programmer. Falls back to raw if filtering
+    would empty the set.
     """
-    if base_nt in _EXPR_START_ONLY_NTS:
-        # Only expression-starting tokens are valid here.
-        filtered = raw & _EXPR_FIRST
-        return filtered if filtered else raw
-
-    if base_nt in _EXPR_CONT_NTS:
-        # Either a binary operator continues the expression, or it ends.
-        # Strip only the pure-delimiter noise; keep operators and expr starters
-        # so the message stays informative when a continuation is possible.
-        filtered = raw - _FOLLOW_ONLY_NOISE
-        return filtered if filtered else raw
-
-    if base_nt in _EXPR_SUFFIX_NTS:
-        # Only suffix / access tokens come from real productions here.
-        filtered = raw & _SUFFIX_TOKENS
-        return filtered if filtered else raw
-
-    # All other NTs: strip only unambiguous delimiter noise that can never
-    # be a valid expected token outside of FOLLOW bleed on nullable rules.
-    # We intentionally keep keywords, operators, and identifiers untouched.
-    filtered = raw - _FOLLOW_ONLY_NOISE
+    bleed = _NT_BLEED.get(base_nt)
+    if bleed is None:
+        return raw              # pass-through - no filtering applied
+    filtered = raw - bleed
     return filtered if filtered else raw
 
 
@@ -256,17 +230,17 @@ class Parser:
         # For-loop clause disambiguation:
         # <for_op> and <for_exp> are nullable with FOLLOW = {) ;}
         # Both appear in the precomputed set; trim to whichever is valid here.
-        if base in ('<for_op>', '<for_exp>'):
+        # Apply cosmetic filtering before context-specific overrides so that
+        # intentional additions (e.g. ';' for for_condition) are not stripped.
+        expected = _filter_expected_for_nt(base, expected)
+
+        if base in ('<for_op>', '<for_exp>', '<id_type>'):
             if 'for_condition' in self.context_stack:
                 expected.discard(')')
                 expected.add(';')
             elif 'for_increment' in self.context_stack:
                 expected.discard(';')
                 expected.add(')')
-
-        # Apply cosmetic filtering to remove FOLLOW-set noise from expression
-        # and suffix NTs.  Parsing logic is not affected.
-        expected = _filter_expected_for_nt(base, expected)
 
         self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {sorted(expected)}")
 
