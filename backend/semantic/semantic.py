@@ -1,1022 +1,1157 @@
-"""
-Semantic Analyzer for arCh Language — v3
-Performs type checking, scope resolution, and semantic error detection.
-Uses Visitor Pattern with DFS traversal (Pre-order for declarations,
-Post-order for expression type inference).
+# ===========================================================================
+# semantic.py — Semantic Analysis Phase
+# ===========================================================================
+#
+# ROLE IN THE PIPELINE
+# --------------------
+# The SemanticAnalyzer is the third phase of the arCh compiler, running after:
+#   1. Lexer      — produces a token list
+#   2. Parser     — validates syntax, produces a validated token list
+#   3. ASTBuilder — builds a ProgramNode tree from the token list   ← input here
+#   4. SemanticAnalyzer                                              ← THIS FILE
+#   5. TAC Generator (future)                                        ← output consumed here
+#
+# The semantic analyzer walks the AST produced by ASTBuilder and:
+#   (a) Registers all declarations into the SymbolTable.
+#   (b) Resolves all identifier references (undeclared variable detection).
+#   (c) Checks type compatibility for assignments and expressions.
+#   (d) Validates control-flow correctness (break/continue outside loops,
+#       return type matching, etc.)
+#   (e) Annotates every ExprNode with its resolved expr_type so the future
+#       TAC generator knows what type each subexpression produces.
+#
+# DEPENDENCIES
+# ------------
+#   Reads:   ProgramNode tree from ast_builder.py / ast.py
+#   Owns:    SymbolTable instance from symbol_table.py
+#   Writes:  expr_type fields on all ExprNode subclasses in the AST
+#
+# DATA FLOW
+# ---------
+#   ProgramNode (from ASTBuilder)
+#       │
+#       ▼ analyze(program_node)
+#   SemanticAnalyzer
+#       ├── SymbolTable  (mutable state: scopes, symbol definitions)
+#       ├── errors list  (accumulated SemanticError objects)
+#       └── annotated AST (expr_type fields filled in on ExprNodes)
+#       │
+#       ▼
+#   list[str]  — human-readable error messages, or empty list on success
+#
+# TRAVERSAL ORDER
+# ---------------
+# The analyzer performs TWO passes over the global-scope declarations:
+#
+#   Pass 1 — Register all struct definitions and function signatures.
+#             This allows forward references: a function can call another
+#             function defined later in the file.
+#
+#   Pass 2 — Analyze function bodies.
+#             By this point all global names are in the symbol table.
+#
+# Within each function body, declarations and statements are visited
+# in order (single pass), which means variables must be declared before use
+# (no forward references for local variables).
+#
+# SCOPE MANAGEMENT SUMMARY
+# ------------------------
+#   ProgramNode            — no new scope (global scope is pre-existing)
+#   FunctionNode           — enter_scope(func_name) … exit_scope()
+#   IfNode then/else body  — enter_scope("block") … exit_scope()
+#   WhileNode body         — enter_scope("while") … exit_scope()
+#   DoWhileNode body       — enter_scope("dowhile") … exit_scope()
+#   ForNode                — enter_scope("for") … exit_scope()
+#                            (init variable is declared in this scope)
+#   SwitchNode body        — enter_scope("switch") … exit_scope()
+#
+# ERROR REPORTING
+# ---------------
+# Errors are accumulated in self.errors as SemanticError objects.
+# The analyzer does NOT stop at the first error; it continues to collect
+# all errors so the programmer sees a complete report.
+# At the end, get_errors() returns the list of formatted error strings.
+#
+# TAC READINESS
+# -------------
+# After a successful semantic pass, every ExprNode in the AST has its
+# expr_type field set.  A TAC generator can:
+#   - Use expr_type to determine what temporary variable type to allocate.
+#   - Walk FunctionNode.body lists sequentially to emit TAC instructions.
+#   - Use SymbolTable.dump() to inspect what names are globally known.
+#
+# ===========================================================================
 
-Changes in v3 (all improvements from the spec):
-  1.  Use-before-initialization enforced in visit_id().
-  2.  All-paths return analysis: _returns_on_all_paths() helper.
-  3.  Separate in_switch flag: continue (mend) rejected inside switch.
-  4.  Duplicate case value detection within each switch block.
-  5.  Void function call rejected when used as an expression value.
-  6.  Shadowing warning emitted when a local name hides a global.
-  7.  Dead code detection: statements after 'home' in same block warned.
-  8.  Type annotation: resolved expr_type written back into AST nodes.
-  9.  Constant folding: literal BinaryOp nodes folded at semantic pass.
- 10.  Struct initialiser checking (basic member-count and member-type).
- 11.  Array initialiser element type and size checking.
-
-Carried forward from v2:
-  - TYPE_ORDER / dominant_type / can_cast type system
-  - Struct member access (chained) fixed
-  - Multi-level scope / get_current_function fixed
-  - Symbol.initialized tracking
-"""
-
-from typing import List, Dict, Optional, Any, Set
+from typing import Optional, List, Dict
 from semantic.ast import (
-    ASTNode, ProgramNode, FunctionNode, ParamNode,
+    ProgramNode, FunctionNode, ParamNode,
     GlobalDeclNode, VarDeclNode, StructDeclNode, StructMemberNode,
     StatementNode, AssignNode, IfNode, WhileNode, DoWhileNode,
     ForNode, SwitchNode, CaseNode, BreakNode, ContinueNode,
     ReturnNode, IONode,
     ExprNode, BinaryOpNode, UnaryOpNode, LiteralNode,
     IdNode, ArrayAccessNode, StructAccessNode, FunctionCallNode,
-    WallConcatNode, TypeInfo, TYPE_ORDER, _NUMERIC_RANK, _CASTABLE_TYPES,
+    WallConcatNode,
+    TypeInfo, TYPE_ORDER, _CASTABLE_TYPES,
 )
 from semantic.symbol_table import SymbolTable, Symbol
 
 
-# ============================================================================
-# Error / Warning representation
-# ============================================================================
+# ---------------------------------------------------------------------------
+# SemanticError — structured error representation
+# ---------------------------------------------------------------------------
 
 class SemanticError:
-    """A semantic error with source location."""
+    """Holds one semantic error with its source location and message.
 
-    def __init__(self, message: str, line: int, col: int,
-                 severity: str = 'error'):
+    Attributes
+    ----------
+    line    — source line number where the error was detected.
+    col     — source column number.
+    message — human-readable description of the error.
+    """
+
+    def __init__(self, message: str, line: int = 0, col: int = 0):
         self.message = message
         self.line = line
         self.col = col
-        self.severity = severity          # 'error' or 'warning'
-        self.start_line = line
-        self.start_col = col
-        self.end_line = line
-        self.end_col = col + 1
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'message': self.message,
-            'line': self.line,
-            'col': self.col,
-            'severity': self.severity,
-            'start_line': self.start_line,
-            'start_col': self.start_col,
-            'end_line': self.end_line,
-            'end_col': self.end_col,
-        }
+    def __str__(self):
+        return f"Semantic Error at line {self.line}, col {self.col}: {self.message}"
 
 
-# ============================================================================
-# Module-level type system
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Helper: build a TypeInfo from a Symbol
+# ---------------------------------------------------------------------------
 
-_VALID_TYPES = frozenset({'tile', 'glass', 'brick', 'beam', 'wall', 'field', 'house'})
+def _type_info_from_symbol(sym: Symbol) -> TypeInfo:
+    """Convert a Symbol into a TypeInfo for type-compatibility checks.
 
-_ARITH_OPS = frozenset({'+', '-', '*', '/', '%'})
-_REL_OPS   = frozenset({'<', '<=', '>', '>='})
-_EQ_OPS    = frozenset({'==', '!='})
-_LOGIC_OPS = frozenset({'&&', '||'})
-
-# All types that participate in implicit casting (wall is excluded)
-_CAST_TYPES = frozenset({'brick', 'beam', 'tile', 'glass'})
-
-
-def dominant_type(type_a: str, type_b: str) -> str:
-    """Return the wider of two castable types for expression result typing.
-
-    Hierarchy (narrowest → widest): brick(0) beam(1) tile(2) glass(3)
-
-    Examples
-    --------
-    dominant_type('tile', 'glass') → 'glass'
-    dominant_type('brick', 'tile') → 'tile'
-    dominant_type('beam', 'tile')  → 'tile'
+    Handles the 'house StructName' compound type string by splitting it
+    into base_type='house' and struct_name='StructName'.
     """
-    if type_a not in _NUMERIC_RANK or type_b not in _NUMERIC_RANK:
-        return type_a
-    return type_a if _NUMERIC_RANK[type_a] >= _NUMERIC_RANK[type_b] else type_b
+    base = sym.type
+    struct_name = sym.struct_name
 
-
-def can_cast(source: str, target: str) -> bool:
-    """Single source of truth for implicit cast validity.
-
-    Rules
-    -----
-    1. source == target               → True
-    2. either is 'wall'              → False  (wall is completely isolated)
-    3. both in _CAST_TYPES           → True   (promotion AND demotion allowed)
-    4. everything else               → False
-    """
-    if source == target:
-        return True
-    if source == 'wall' or target == 'wall':
-        return False
-    if source in _CAST_TYPES and target in _CAST_TYPES:
-        return True
-    return False
-
-
-def _make_typeinfo(type_str: str, symbol: Optional[Symbol] = None) -> TypeInfo:
-    if type_str and type_str.startswith('house '):
-        struct_name = type_str[6:].strip()
-        return TypeInfo(base_type='house', struct_name=struct_name,
-                        is_array=symbol.is_array if symbol else False,
-                        array_dims=symbol.array_dims if symbol else None)
-    return TypeInfo(
-        base_type=type_str or 'tile',
-        is_array=symbol.is_array if symbol else False,
-        array_dims=symbol.array_dims if symbol else None,
-    )
-
-
-def _typeinfo_from_symbol(symbol: Symbol) -> TypeInfo:
-    base = symbol.type
-    struct_name = symbol.struct_name
-    if not struct_name and isinstance(base, str) and base.startswith('house '):
+    # Parse compound 'house StructName' strings
+    if isinstance(base, str) and base.startswith("house "):
         struct_name = base[6:].strip()
-        base = 'house'
+        base = "house"
+
     return TypeInfo(
         base_type=base,
-        is_array=symbol.is_array,
-        array_dims=symbol.array_dims,
+        is_array=sym.is_array,
+        array_dims=sym.array_dims,
         struct_name=struct_name,
-        is_const=symbol.is_const,
+        is_const=sym.is_const,
     )
 
 
-# ============================================================================
-# Constant folding helpers
-# ============================================================================
-
-def _fold_binary(op: str, lval, rval, result_type: str) -> Optional[LiteralNode]:
-    """Attempt to constant-fold a binary operation on two literal values.
-
-    Returns a new LiteralNode if folding succeeds, None otherwise.
-    Division by zero is silently skipped (no fold, no crash).
-    """
-    try:
-        if op == '+':   result = lval + rval
-        elif op == '-': result = lval - rval
-        elif op == '*': result = lval * rval
-        elif op == '/':
-            if rval == 0:
-                return None
-            result = lval / rval if result_type == 'glass' else int(lval / rval)
-        elif op == '%':
-            if rval == 0:
-                return None
-            result = int(lval) % int(rval)
-        else:
-            return None
-    except Exception:
-        return None
-    return LiteralNode(value=result, literal_type=result_type, line=0, col=0)
-
-
-def _literal_value(node: LiteralNode):
-    """Extract a Python numeric value from a LiteralNode."""
-    v = node.value
-    if node.literal_type == 'glass':
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return None
-    try:
-        return int(v) if not isinstance(v, (int, float)) else v
-    except (ValueError, TypeError):
-        return None
-
-
-# ============================================================================
-# All-paths return analysis
-# ============================================================================
-
-def _returns_on_all_paths(stmts: list) -> bool:
-    """Return True if every execution path through *stmts* ends with 'home'.
-
-    Conservative analysis:
-      - A ReturnNode guarantees a return on this path.
-      - An IfNode with both then_body and else_body that each return guarantees.
-      - A SwitchNode with a default case where every case body returns guarantees.
-      - All other nodes (loops, assignments, etc.) do not guarantee a return.
-    """
-    for stmt in stmts:
-        if isinstance(stmt, ReturnNode):
-            return True
-        if isinstance(stmt, IfNode):
-            if stmt.else_body is not None:
-                if (_returns_on_all_paths(stmt.then_body) and
-                        _returns_on_all_paths(stmt.else_body)):
-                    return True
-        if isinstance(stmt, SwitchNode):
-            has_default = any(c.is_default for c in stmt.cases)
-            if has_default and all(_returns_on_all_paths(c.body) for c in stmt.cases):
-                return True
-    return False
-
-
-# ============================================================================
-# Semantic Analyzer
-# ============================================================================
+# ---------------------------------------------------------------------------
+# SemanticAnalyzer
+# ---------------------------------------------------------------------------
 
 class SemanticAnalyzer:
-    """
-    Semantic Analyzer using Visitor Pattern.
-    Traversal: DFS Pre-order for declarations, Post-order for expressions.
+    """Traverses the AST, enforces semantic rules, and annotates expression types.
 
-    Context flags
-    -------------
-    current_function_return_type  str | None   return type of enclosing function
-    in_loop                       bool         True inside any loop body
-    in_switch                     bool         True inside a switch body (NOT a loop)
+    Usage
+    -----
+        analyzer = SemanticAnalyzer()
+        errors = analyzer.analyze(program_node)
+        if errors:
+            for e in errors:
+                print(e)
+        else:
+            # AST is fully annotated; proceed to TAC generation
+            symbol_table = analyzer.symbol_table
     """
 
-    def __init__(self, ast: ProgramNode):
-        self.ast = ast
+    def __init__(self):
         self.symbol_table = SymbolTable()
         self.errors: List[SemanticError] = []
-        self.current_function_return_type: Optional[str] = None
-        self.in_loop: bool = False
-        self.in_switch: bool = False     # NEW: separate switch context
+
+    # ── error helpers ─────────────────────────────────────────────────────────
+
+    def _error(self, message: str, line: int = 0, col: int = 0):
+        """Append one semantic error to the error list."""
+        self.errors.append(SemanticError(message, line, col))
+
+    def get_errors(self) -> List[dict]:
+        """Return all accumulated errors as dicts with line, col, and message."""
+        return [
+            {
+                "line":    e.line if e.line else 1,
+                "col":     e.col  if e.col  else 1,
+                "message": e.message,
+            }
+            for e in self.errors
+        ]
 
     # ── public entry point ────────────────────────────────────────────────────
 
-    def analyze(self) -> List[Dict]:
-        """Main entry point.  Returns list of error/warning dicts."""
-        try:
-            self.visit_program(self.ast)
-        except Exception as e:
-            self.errors.append(SemanticError(
-                f'Internal semantic error: {e}', 1, 1
-            ))
-        return [err.to_dict() for err in self.errors]
+    def analyze(self, program: ProgramNode) -> List[dict]:
+        """Run the full semantic analysis over the program AST.
 
-    def add_error(self, message: str, line: int, col: int):
-        self.errors.append(SemanticError(message, line, col, severity='error'))
+        Returns a list of error dicts (empty list on success).
+        Each dict has keys: "line", "col", "message".
+        TAC generation must NOT run if this returns a non-empty list.
+        """
+        self._analyze_program(program)
+        return self.get_errors()
 
-    def add_warning(self, message: str, line: int, col: int):
-        self.errors.append(SemanticError(message, line, col, severity='warning'))
+    # -----------------------------------------------------------------------
+    # Program-level analysis (two-pass)
+    # -----------------------------------------------------------------------
 
-    # ── program ───────────────────────────────────────────────────────────────
+    def _analyze_program(self, program: ProgramNode):
+        """Analyze the root ProgramNode.
 
-    def visit_program(self, node: ProgramNode):
-        # Pass 1a: struct types first
-        for decl in node.globals:
-            if isinstance(decl, StructDeclNode):
-                self.declare_struct(decl)
-        # Pass 1b: global variables
-        for decl in node.globals:
-            if isinstance(decl, VarDeclNode):
-                self.declare_global_variable(decl)
-        # Pass 1c: function signatures (enables forward calls)
-        for func in node.functions:
-            self.declare_function(func)
-        # Pass 2: function bodies
-        for func in node.functions:
-            self.visit_function(func)
-        # Require blueprint() entry point
-        if not self.symbol_table.get_function('blueprint'):
-            self.add_error(
-                "Missing entry point: blueprint() function not defined", 1, 1
-            )
+        Pass 1: Register all global declarations (structs, global variables,
+                function signatures) into the global scope.
+        Pass 2: Analyze each function body with all globals already visible.
+        """
+        # Pass 1 — register global declarations
+        for decl in program.globals:
+            self._register_global_decl(decl)
 
-    # ── struct declaration ────────────────────────────────────────────────────
+        # Pass 1 continued — register function signatures
+        for func in program.functions:
+            self._register_function_signature(func)
 
-    def declare_struct(self, node: StructDeclNode):
-        if self.symbol_table.get_struct(node.name):
-            self.add_error(f"Struct '{node.name}' already defined",
-                           node.line, node.col)
-            return
+        # Pass 2 — analyze function bodies
+        for func in program.functions:
+            self._analyze_function(func)
+
+    # ── Pass 1: global registration ──────────────────────────────────────────
+
+    def _register_global_decl(self, decl: GlobalDeclNode):
+        """Register one global declaration into the global scope.
+
+        Handles VarDeclNode (global variables and constants) and
+        StructDeclNode (struct type definitions).
+        """
+        if isinstance(decl, StructDeclNode):
+            self._register_struct(decl)
+        elif isinstance(decl, VarDeclNode):
+            self._register_var_decl(decl, is_global=True)
+
+    def _register_struct(self, decl: StructDeclNode):
+        """Register a struct type definition in the global scope.
+
+        Each struct member is stored as a Symbol in the members dict so that
+        StructAccessNode resolution can look up field types directly.
+        """
         members: Dict[str, Symbol] = {}
-        seen: set = set()
-        for member in node.members:
-            if member.name in seen:
-                self.add_error(
-                    f"Duplicate member '{member.name}' in struct '{node.name}'",
-                    member.line, member.col)
-                continue
-            seen.add(member.name)
-            members[member.name] = Symbol(
-                name=member.name, type=member.type, kind='variable',
-                is_array=member.is_array, array_dims=member.array_dims,
-                initialized=True, line=member.line, col=member.col,
+        for member in decl.members:
+            # Spec G.8: struct members cannot initialize a value
+            if hasattr(member, 'init_value') and member.init_value is not None:
+                self._error(
+                    f"Struct member '{member.name}' cannot have an initializer "
+                    f"(spec G.8)",
+                    member.line, member.col
+                )
+            mem_sym = Symbol(
+                name=member.name,
+                type=member.type,
+                kind='variable',
+                is_array=member.is_array,
+                array_dims=member.array_dims,
+                initialized=True,   # struct members are always "accessible"
+                line=member.line,
+                col=member.col,
             )
-        self.symbol_table.define_struct(node.name, members, node.line, node.col)
+            if member.name in members:
+                self._error(
+                    f"Duplicate member '{member.name}' in struct '{decl.name}'",
+                    member.line, member.col
+                )
+            else:
+                members[member.name] = mem_sym
 
-    # ── global variable / constant ────────────────────────────────────────────
+        ok = self.symbol_table.define_struct(decl.name, members,
+                                             decl.line, decl.col)
+        if not ok:
+            self._error(f"Struct '{decl.name}' already defined",
+                        decl.line, decl.col)
 
-    def declare_global_variable(self, node: VarDeclNode):
-        if self.symbol_table.lookup_local(node.name):
-            self.add_error(f"Global variable '{node.name}' already defined",
-                           node.line, node.col)
-            return
-        struct_name = _resolve_struct_name(node)
-        symbol = Symbol(
-            name=node.name, type=node.type,
-            kind='constant' if node.is_const else 'variable',
-            is_const=node.is_const, is_array=node.is_array,
-            array_dims=node.array_dims, struct_name=struct_name,
-            initialized=(node.init_value is not None),
-            line=node.line, col=node.col,
-        )
-        self.symbol_table.define_global(symbol)
-        if node.init_value:
-            init_type = self.visit_expr(node.init_value)
-            if init_type and not self.can_assign(node.type, init_type):
-                self.add_error(
-                    f"Type mismatch in initialization of '{node.name}': "
-                    f"cannot assign {init_type} to {node.type}",
-                    node.line, node.col)
+    def _register_function_signature(self, func: FunctionNode):
+        """Register a function's signature (name, return type, params) globally.
 
-    # ── function declaration ──────────────────────────────────────────────────
-
-    def declare_function(self, node: FunctionNode):
-        if self.symbol_table.get_function(node.name):
-            self.add_error(f"Function '{node.name}' already defined",
-                           node.line, node.col)
-            return
-        params = [
-            Symbol(name=p.name, type=p.type, kind='parameter',
-                   initialized=True, line=p.line, col=p.col)
-            for p in node.params
-        ]
-        func_symbol = Symbol(
-            name=node.name, type=node.return_type, kind='function',
-            return_type=node.return_type, params=params,
-            initialized=True, line=node.line, col=node.col,
-        )
-        self.symbol_table.define_global(func_symbol)
-
-    # ── function body ─────────────────────────────────────────────────────────
-
-    def visit_function(self, node: FunctionNode):
-        self.current_function_return_type = node.return_type
-        self.symbol_table.enter_scope(node.name)
-
-        seen_params: set = set()
-        for param in node.params:
-            if param.name in seen_params:
-                self.add_error(
-                    f"Duplicate parameter '{param.name}' in '{node.name}'",
-                    param.line, param.col)
-                continue
-            seen_params.add(param.name)
-            self.symbol_table.define(Symbol(
-                name=param.name, type=param.type, kind='parameter',
-                initialized=True, line=param.line, col=param.col,
+        Parameters are stored as Symbol objects on the function Symbol so
+        that call-site argument count and type checking can compare against them.
+        """
+        param_symbols: List[Symbol] = []
+        for p in func.params:
+            param_symbols.append(Symbol(
+                name=p.name,
+                type=p.type,
+                kind='parameter',
+                initialized=True,
+                line=p.line,
+                col=p.col,
             ))
 
-        # ── all-paths return check (Issue 2) ─────────────────────────────────
-        if node.return_type != 'field':
-            if not _returns_on_all_paths(node.body):
-                self.add_error(
-                    f"Function '{node.name}' does not return a value on "
-                    f"all control paths",
-                    node.line, node.col)
-
-        # ── dead code detection within body (Issue 7) ────────────────────────
-        self._check_dead_code(node.body)
-
-        for stmt in node.body:
-            self.visit_statement(stmt)
-
-        self.symbol_table.exit_scope()
-        self.current_function_return_type = None
-
-    # ── statement dispatch ────────────────────────────────────────────────────
-
-    def visit_statement(self, node: ASTNode):
-        if isinstance(node, VarDeclNode):
-            self.visit_var_decl(node)
-        elif isinstance(node, AssignNode):
-            self.visit_assign(node)
-        elif isinstance(node, IfNode):
-            self.visit_if(node)
-        elif isinstance(node, WhileNode):
-            self.visit_while(node)
-        elif isinstance(node, DoWhileNode):
-            self.visit_dowhile(node)
-        elif isinstance(node, ForNode):
-            self.visit_for(node)
-        elif isinstance(node, SwitchNode):
-            self.visit_switch(node)
-        elif isinstance(node, BreakNode):
-            self.visit_break(node)
-        elif isinstance(node, ContinueNode):
-            self.visit_continue(node)
-        elif isinstance(node, ReturnNode):
-            self.visit_return(node)
-        elif isinstance(node, IONode):
-            self.visit_io(node)
-        elif isinstance(node, FunctionCallNode):
-            self.visit_function_call(node)
-
-    # ── dead code detection (Issue 7) ────────────────────────────────────────
-
-    def _check_dead_code(self, stmts: list):
-        """Warn about statements that follow a home statement in the same block."""
-        for i, stmt in enumerate(stmts):
-            if isinstance(stmt, ReturnNode):
-                remaining = [s for s in stmts[i + 1:]
-                             if not isinstance(s, (VarDeclNode,))]
-                # Any executable statement after return is unreachable
-                for dead in stmts[i + 1:]:
-                    self.add_warning(
-                        "Unreachable code after 'home' statement",
-                        dead.line, dead.col)
-                return  # stop after first return in block
-
-    # ── local variable declaration ────────────────────────────────────────────
-
-    def visit_var_decl(self, node: VarDeclNode):
-        # Redeclaration in same scope
-        if self.symbol_table.lookup_local(node.name):
-            self.add_error(
-                f"Variable '{node.name}' already declared in this scope",
-                node.line, node.col)
-            return
-
-        # ── shadowing warning (Issue 6) ───────────────────────────────────────
-        outer = self.symbol_table.lookup(node.name)
-        if outer is not None and outer.scope_level == 0:
-            self.add_warning(
-                f"Local variable '{node.name}' shadows global declaration",
-                node.line, node.col)
-
-        struct_name = _resolve_struct_name(node)
-        symbol = Symbol(
-            name=node.name, type=node.type,
-            kind='constant' if node.is_const else 'variable',
-            is_const=node.is_const, is_array=node.is_array,
-            array_dims=node.array_dims, struct_name=struct_name,
-            initialized=(node.init_value is not None),
-            line=node.line, col=node.col,
+        func_sym = Symbol(
+            name=func.name,
+            type=func.return_type,
+            kind='function',
+            return_type=func.return_type,
+            params=param_symbols,
+            initialized=True,
+            line=func.line,
+            col=func.col,
         )
-        self.symbol_table.define(symbol)
+        ok = self.symbol_table.define_global(func_sym)
+        if not ok:
+            self._error(f"Function '{func.name}' already defined",
+                        func.line, func.col)
 
-        if node.init_value:
-            init_type = self.visit_expr(node.init_value)
-            if init_type and not self.can_assign(node.type, init_type):
-                self.add_error(
-                    f"Type mismatch: cannot assign {init_type} to {node.type}",
-                    node.line, node.col)
+    # ── Pass 2: function body analysis ───────────────────────────────────────
 
-    # ── assignment ────────────────────────────────────────────────────────────
+    def _analyze_function(self, func: FunctionNode):
+        """Analyze one function definition.
 
-    def visit_assign(self, node: AssignNode):
-        # ── mark initialized BEFORE visiting the target expression ───────────
-        # visit_expr(node.target) calls visit_id() on the LHS variable, which
-        # checks symbol.initialized.  If we marked it after, the use-before-init
-        # check would incorrectly fire on every assignment to an uninitialized
-        # variable — even though an assignment IS the initialization event.
-        if isinstance(node.target, IdNode):
-            symbol = self.symbol_table.lookup(node.target.name)
-            if symbol and symbol.is_const:
-                self.add_error(
-                    f"Cannot assign to constant '{node.target.name}'",
-                    node.line, node.col)
-                return
-            # Mark initialized now, before visit_expr reads the flag
-            if symbol and not symbol.initialized:
-                symbol.initialized = True
-
-        target_type = self.visit_expr(node.target)
-        if target_type is None:
-            return
-
-        value_type = self.visit_expr(node.value)
-        if value_type is None:
-            return
-
-        # ── void-function-as-value guard (Issue 5) ────────────────────────────
-        if value_type == 'field':
-            self.add_error(
-                "Cannot use a void (field) function result as a value",
-                node.line, node.col)
-            return
-
-        if node.operator != '=':
-            base_op = node.operator[0]
-            result_type = self.check_binary_op(
-                target_type, base_op, value_type, node.line, node.col)
-            if result_type and not self.can_assign(target_type, result_type):
-                self.add_error(
-                    f"Type mismatch in compound assignment '{node.operator}': "
-                    f"{target_type} and {value_type} are incompatible",
-                    node.line, node.col)
-        else:
-            if not self.can_assign(target_type, value_type):
-                self.add_error(
-                    f"Type mismatch: cannot assign {value_type} to {target_type}",
-                    node.line, node.col)
-
-    # ── control flow ──────────────────────────────────────────────────────────
-
-    def visit_if(self, node: IfNode):
-        cond_type = self.visit_expr(node.condition)
-        self._check_bool_condition(cond_type, 'if', node.line, node.col)
-
-        self.symbol_table.enter_scope('block')
-        self._check_dead_code(node.then_body)
-        for stmt in node.then_body:
-            self.visit_statement(stmt)
-        self.symbol_table.exit_scope()
-
-        if node.else_body:
-            self.symbol_table.enter_scope('block')
-            self._check_dead_code(node.else_body)
-            for stmt in node.else_body:
-                self.visit_statement(stmt)
-            self.symbol_table.exit_scope()
-
-    def visit_while(self, node: WhileNode):
-        cond_type = self.visit_expr(node.condition)
-        self._check_bool_condition(cond_type, 'while', node.line, node.col)
-
-        self.symbol_table.enter_scope('while')
-        old_in_loop, old_in_switch = self.in_loop, self.in_switch
-        self.in_loop = True
-        self.in_switch = False
-        self._check_dead_code(node.body)
-        for stmt in node.body:
-            self.visit_statement(stmt)
-        self.in_loop, self.in_switch = old_in_loop, old_in_switch
-        self.symbol_table.exit_scope()
-
-    def visit_dowhile(self, node: DoWhileNode):
-        self.symbol_table.enter_scope('dowhile')
-        old_in_loop, old_in_switch = self.in_loop, self.in_switch
-        self.in_loop = True
-        self.in_switch = False
-        self._check_dead_code(node.body)
-        for stmt in node.body:
-            self.visit_statement(stmt)
-        self.in_loop, self.in_switch = old_in_loop, old_in_switch
-        self.symbol_table.exit_scope()
-
-        cond_type = self.visit_expr(node.condition)
-        self._check_bool_condition(cond_type, 'do-while', node.line, node.col)
-
-    def visit_for(self, node: ForNode):
-        self.symbol_table.enter_scope('for')
-        old_in_loop, old_in_switch = self.in_loop, self.in_switch
-        self.in_loop = True
-        self.in_switch = False
-
-        if node.init:
-            if isinstance(node.init, VarDeclNode):
-                self.visit_var_decl(node.init)
-            elif isinstance(node.init, AssignNode):
-                self.visit_assign(node.init)
-
-        cond_type = self.visit_expr(node.condition)
-        self._check_bool_condition(cond_type, 'for', node.line, node.col)
-
-        if node.increment:
-            self.visit_expr(node.increment)
-
-        self._check_dead_code(node.body)
-        for stmt in node.body:
-            self.visit_statement(stmt)
-
-        self.in_loop, self.in_switch = old_in_loop, old_in_switch
-        self.symbol_table.exit_scope()
-
-    def visit_switch(self, node: SwitchNode):
-        """Type-check a switch (room) statement.
-
-        NEW: separate in_switch flag (Issue 3).
-        NEW: duplicate case value detection (Issue 4).
+        Opens a scope named after the function, registers parameters as local
+        symbols, then visits each item in the body.
         """
-        switch_type = self.visit_expr(node.expr)
+        # Spec I.11: blueprint (main) must not accept parameters
+        if func.name == 'blueprint' and func.params:
+            self._error(
+                "blueprint() must not accept parameters",
+                func.line, func.col
+            )
 
-        self.symbol_table.enter_scope('switch')
-        old_in_loop, old_in_switch = self.in_loop, self.in_switch
-        # switch does NOT set in_loop — only in_switch
-        self.in_loop = False
-        self.in_switch = True
+        self.symbol_table.enter_scope(func.name)
 
-        seen_case_values: Set[str] = set()   # Issue 4: track case labels
+        # Register parameters in the function's own scope
+        for p in func.params:
+            param_sym = Symbol(
+                name=p.name,
+                type=p.type,
+                kind='parameter',
+                initialized=True,
+                line=p.line,
+                col=p.col,
+            )
+            ok = self.symbol_table.define(param_sym)
+            if not ok:
+                self._error(
+                    f"Duplicate parameter '{p.name}' in function '{func.name}'",
+                    p.line, p.col
+                )
 
-        for case in node.cases:
-            if not case.is_default and case.value:
-                case_type = self.visit_expr(case.value)
-                if switch_type and case_type and not self.types_compatible(switch_type, case_type):
-                    self.add_error(
-                        f"Case value type '{case_type}' does not match "
-                        f"switch expression type '{switch_type}'",
-                        case.line, case.col)
+        # Visit body items (declarations interleaved with statements)
+        for item in func.body:
+            self._analyze_body_item(item, func.return_type)
 
-                # ── duplicate case detection (Issue 4) ───────────────────────
-                case_key = str(case.value.value) if case.value else None
-                if case_key is not None:
-                    if case_key in seen_case_values:
-                        self.add_error(
-                            f"Duplicate case value '{case_key}' in switch",
-                            case.line, case.col)
-                    else:
-                        seen_case_values.add(case_key)
+        # Check that non-field functions guarantee a return statement.
+        # Spec H.9: A non-field sub-program must guarantee exactly one home
+        # statement executes along all possible control paths.
+        # Spec H.10: A field sub-program shouldn't have a return statement.
+        if func.return_type != 'field':
+            if not self._body_guarantees_return(func.body):
+                self._error(
+                    f"Function '{func.name}' has return type '{func.return_type}' "
+                    f"but not all code paths return a value (missing 'home')",
+                    func.line, func.col
+                )
 
-            self._check_dead_code(case.body)
-            for stmt in case.body:
-                self.visit_statement(stmt)
-
-        self.in_loop, self.in_switch = old_in_loop, old_in_switch
         self.symbol_table.exit_scope()
 
-    def visit_break(self, node: BreakNode):
-        """crack is valid inside a loop OR a switch."""
-        if not self.in_loop and not self.in_switch:
-            self.add_error(
-                "Break (crack) statement outside loop or switch",
-                node.line, node.col)
+    # -----------------------------------------------------------------------
+    # Return-path analysis
+    # -----------------------------------------------------------------------
 
-    def visit_continue(self, node: ContinueNode):
-        """mend is valid ONLY inside a loop — NOT inside a switch. (Issue 3)"""
-        if not self.in_loop:
-            self.add_error(
-                "Continue (mend) statement outside loop; "
-                "'mend' is not valid inside a switch (room) block",
-                node.line, node.col)
+    def _body_guarantees_return(self, body: list) -> bool:
+        """Check whether a statement list guarantees a return on all paths.
 
-    def visit_return(self, node: ReturnNode):
-        if not self.current_function_return_type:
-            self.add_error("Return statement outside function",
-                           node.line, node.col)
-            return
+        This uses a conservative structural analysis:
+          - A ReturnNode at the top level of the body guarantees return.
+          - An IfNode with both then_body and else_body, where BOTH branches
+            guarantee return, counts as a guaranteed return.
+          - Anything else does not guarantee return.
 
-        rtype = self.current_function_return_type
-
-        if rtype == 'field':
-            if node.value:
-                self.add_error(
-                    "Cannot return a value from a field (void) function",
-                    node.line, node.col)
-        else:
-            if not node.value:
-                self.add_error(
-                    f"Function must return a value of type '{rtype}'",
-                    node.line, node.col)
-                return
-            ret_type = self.visit_expr(node.value)
-            if ret_type and not self.can_assign(rtype, ret_type):
-                self.add_error(
-                    f"Return type mismatch: expected '{rtype}', got '{ret_type}'",
-                    node.line, node.col)
-
-    # ── I/O ───────────────────────────────────────────────────────────────────
-
-    def visit_io(self, node: IONode):
-        for arg in node.args:
-            self.visit_expr(arg)
-
-    # ── expression visitors ───────────────────────────────────────────────────
-
-    def visit_expr(self, node: ExprNode) -> Optional[str]:
-        """Visit an expression, return its type string, and write back expr_type.
-
-        Issue 8 (Type annotation): the resolved type is stored on each node
-        so that the code generator can read node.expr_type directly.
+        This is simpler than a full CFG but catches the most common cases:
+          - Missing return entirely
+          - Return only inside one branch of an if/else
         """
-        if node is None:
-            return None
-        result = self._visit_expr_inner(node)
-        # Write resolved type back into the node (annotation)
-        if result is not None and hasattr(node, 'expr_type'):
-            node.expr_type = result
-        return result
+        if not body:
+            return False
 
-    def _visit_expr_inner(self, node: ExprNode) -> Optional[str]:
-        if isinstance(node, BinaryOpNode):
-            return self.visit_binary_op(node)
-        elif isinstance(node, UnaryOpNode):
-            return self.visit_unary_op(node)
-        elif isinstance(node, LiteralNode):
-            node.expr_type = node.literal_type
-            return node.literal_type
-        elif isinstance(node, IdNode):
-            return self.visit_id(node)
-        elif isinstance(node, ArrayAccessNode):
-            return self.visit_array_access(node)
-        elif isinstance(node, StructAccessNode):
-            return self.visit_struct_access(node)
-        elif isinstance(node, FunctionCallNode):
-            return self.visit_function_call(node)
-        elif isinstance(node, WallConcatNode):
-            return self.visit_wall_concat(node)
-        return None
+        for stmt in body:
+            if isinstance(stmt, ReturnNode):
+                return True
+            if isinstance(stmt, IfNode):
+                # Both branches must guarantee return
+                if stmt.else_body:
+                    then_returns = self._body_guarantees_return(stmt.then_body)
+                    else_returns = self._body_guarantees_return(stmt.else_body)
+                    if then_returns and else_returns:
+                        return True
 
-    def visit_binary_op(self, node: BinaryOpNode) -> Optional[str]:
-        """Infer binary op type with constant folding (Issue 9)."""
-        left_type = self.visit_expr(node.left)
-        right_type = self.visit_expr(node.right)
-        if left_type is None or right_type is None:
-            return None
-
-        result_type = self.check_binary_op(
-            left_type, node.operator, right_type, node.line, node.col)
-
-        # ── constant folding (Issue 9) ────────────────────────────────────────
-        if (result_type and result_type in _CAST_TYPES
-                and isinstance(node.left, LiteralNode)
-                and isinstance(node.right, LiteralNode)
-                and node.operator in _ARITH_OPS
-                and left_type != 'wall' and right_type != 'wall'):
-            lv = _literal_value(node.left)
-            rv = _literal_value(node.right)
-            if lv is not None and rv is not None:
-                folded = _fold_binary(node.operator, lv, rv, result_type)
-                if folded is not None:
-                    # Mutate the node in-place to carry the folded literal
-                    # so the code generator can use it directly
-                    node.folded_value = folded
-
-        return result_type
-
-    def check_binary_op(self, left: str, op: str, right: str,
-                        line: int, col: int) -> Optional[str]:
-        """Determine result type of (left op right); emit errors on violations."""
-        if op in _ARITH_OPS:
-            if op == '+' and left == 'wall' and right == 'wall':
-                return 'wall'
-            if left == 'wall' or right == 'wall':
-                self.add_error(
-                    f"Cannot use wall (string) in arithmetic operation '{op}'",
-                    line, col)
-                return None
-            if left not in _CAST_TYPES or right not in _CAST_TYPES:
-                self.add_error(
-                    f"Operator '{op}' requires castable operands "
-                    f"(brick/beam/tile/glass), got '{left}' and '{right}'",
-                    line, col)
-                return None
-            return dominant_type(left, right)
-
-        elif op in _REL_OPS:
-            if left == 'wall' or right == 'wall':
-                self.add_error(
-                    f"Cannot use wall (string) with relational operator '{op}'",
-                    line, col)
-                return None
-            if left not in _CAST_TYPES or right not in _CAST_TYPES:
-                self.add_error(
-                    f"Relational operator '{op}' requires castable operands, "
-                    f"got '{left}' and '{right}'",
-                    line, col)
-                return None
-            return 'beam'
-
-        elif op in _EQ_OPS:
-            if not self.types_compatible(left, right):
-                self.add_error(
-                    f"Cannot compare '{left}' and '{right}' with '{op}'",
-                    line, col)
-                return None
-            return 'beam'
-
-        elif op in _LOGIC_OPS:
-            if left == 'wall' or right == 'wall':
-                self.add_error(
-                    f"Cannot use wall (string) with logical operator '{op}'",
-                    line, col)
-                return None
-            if left not in _CAST_TYPES or right not in _CAST_TYPES:
-                self.add_error(
-                    f"Logical operator '{op}' requires castable operands, "
-                    f"got '{left}' and '{right}'",
-                    line, col)
-                return None
-            return 'beam'
-
-        return None
-
-    def visit_unary_op(self, node: UnaryOpNode) -> Optional[str]:
-        operand_type = self.visit_expr(node.operand)
-        if operand_type is None:
-            return None
-
-        if node.operator == '-':
-            if operand_type not in _CAST_TYPES:
-                self.add_error(
-                    f"Unary '-' requires a castable operand "
-                    f"(brick/beam/tile/glass), got '{operand_type}'",
-                    node.line, node.col)
-                return None
-            return operand_type
-
-        elif node.operator == '!':
-            if operand_type not in _CAST_TYPES:
-                self.add_error(
-                    f"Logical '!' requires a castable operand "
-                    f"(brick/beam/tile/glass), got '{operand_type}'",
-                    node.line, node.col)
-                return None
-            return 'beam'
-
-        elif node.operator in ('++', '--'):
-            if operand_type not in _CAST_TYPES:
-                self.add_error(
-                    f"Operator '{node.operator}' requires a castable operand "
-                    f"(brick/beam/tile/glass), got '{operand_type}'",
-                    node.line, node.col)
-                return None
-            return operand_type
-
-        return None
-
-    def visit_id(self, node: IdNode) -> Optional[str]:
-        """Look up identifier; check existence and initialization. (Issue 1)"""
-        symbol = self.symbol_table.lookup(node.name)
-        if not symbol:
-            self.add_error(f"Undeclared variable '{node.name}'",
-                           node.line, node.col)
-            return None
-        # ── use-before-initialization check (Issue 1) ─────────────────────────
-        if not symbol.initialized and symbol.kind in ('variable', 'parameter'):
-            self.add_error(
-                f"Variable '{node.name}' used before initialization",
-                node.line, node.col)
-            # Do NOT return None — the type is still known; avoid cascades
-        return symbol.type
-
-    def visit_array_access(self, node: ArrayAccessNode) -> Optional[str]:
-        array_type = self.visit_expr(node.array)
-        if array_type is None:
-            return None
-        if array_type == 'wall':
-            self.add_error("Cannot index a wall (string) value with '[]'",
-                           node.line, node.col)
-            return None
-        if array_type == 'house' or (isinstance(array_type, str)
-                                      and array_type.startswith('house')):
-            self.add_error("Cannot index a struct with '[]'",
-                           node.line, node.col)
-            return None
-        for idx_expr in node.indices:
-            idx_type = self.visit_expr(idx_expr)
-            if idx_type is not None and idx_type not in _CAST_TYPES:
-                self.add_error(
-                    f"Array index must be a castable numeric type "
-                    f"(brick/beam/tile/glass), got '{idx_type}'",
-                    node.line, node.col)
-        return array_type
-
-    def visit_struct_access(self, node: StructAccessNode) -> Optional[str]:
-        """Validate struct member access (single and chained). (Issue 10)"""
-        struct_type_name: Optional[str] = None
-
-        if isinstance(node.struct, IdNode):
-            sym = self.symbol_table.lookup(node.struct.name)
-            if sym is None:
-                self.add_error(f"Undeclared variable '{node.struct.name}'",
-                               node.struct.line, node.struct.col)
-                return None
-            struct_type_name = _extract_struct_name(sym)
-
-        elif isinstance(node.struct, StructAccessNode):
-            # Chained: a.b.member — member_type must itself be a house type
-            member_type = self.visit_struct_access(node.struct)
-            if member_type is None:
-                return None
-            if isinstance(member_type, str) and member_type.startswith('house '):
-                struct_type_name = member_type[6:].strip()
-            else:
-                self.add_error(
-                    f"Cannot access member '{node.member}' on non-struct type "
-                    f"'{member_type}'",
-                    node.line, node.col)
-                return None
-        else:
-            expr_type = self.visit_expr(node.struct)
-            if expr_type is None:
-                return None
-            if isinstance(expr_type, str) and expr_type.startswith('house '):
-                struct_type_name = expr_type[6:].strip()
-            else:
-                self.add_error(
-                    f"Cannot access member '{node.member}' on non-struct type "
-                    f"'{expr_type}'",
-                    node.line, node.col)
-                return None
-
-        if struct_type_name is None:
-            self.add_error(
-                f"Variable is not a struct; cannot access member '{node.member}'",
-                node.line, node.col)
-            return None
-
-        struct_def = self.symbol_table.get_struct(struct_type_name)
-        if struct_def is None:
-            self.add_error(f"Unknown struct type '{struct_type_name}'",
-                           node.line, node.col)
-            return None
-
-        member = (struct_def.members or {}).get(node.member)
-        if member is None:
-            self.add_error(
-                f"Struct '{struct_type_name}' has no member '{node.member}'",
-                node.line, node.col)
-            return None
-
-        return member.type
-
-    def visit_function_call(self, node: FunctionCallNode) -> Optional[str]:
-        """Validate call; reject void result used in expression. (Issue 5)"""
-        func_symbol = self.symbol_table.get_function(node.func_name)
-        if func_symbol is None:
-            self.add_error(f"Undefined function '{node.func_name}'",
-                           node.line, node.col)
-            return None
-
-        if node.func_name in ('view', 'write'):
-            for arg in node.args:
-                self.visit_expr(arg)
-            return func_symbol.return_type
-
-        expected_params = func_symbol.params or []
-
-        if len(node.args) != len(expected_params):
-            self.add_error(
-                f"Function '{node.func_name}' expects "
-                f"{len(expected_params)} argument(s), got {len(node.args)}",
-                node.line, node.col)
-            for arg in node.args:
-                self.visit_expr(arg)
-            return func_symbol.return_type
-
-        for i, (arg_expr, param) in enumerate(
-                zip(node.args, expected_params), start=1):
-            arg_type = self.visit_expr(arg_expr)
-            if arg_type and not self.can_assign(param.type, arg_type):
-                self.add_error(
-                    f"Argument {i} of '{node.func_name}': "
-                    f"expected '{param.type}', got '{arg_type}'",
-                    node.line, node.col)
-
-        # Issue 5: 'field' return type is valid here — the CALLER's context
-        # decides whether void is acceptable.  visit_var_decl / visit_assign
-        # guard against tile x = void_call() by checking for 'field' there.
-        return func_symbol.return_type
-
-    def visit_wall_concat(self, node: WallConcatNode) -> str:
-        for part in node.parts:
-            part_type = self.visit_expr(part)
-            if part_type is not None and part_type != 'wall':
-                self.add_error(
-                    f"Cannot concatenate '{part_type}' into a wall (string); "
-                    f"all parts must be wall",
-                    node.line, node.col)
-        return 'wall'
-
-    # ── type checking helpers ─────────────────────────────────────────────────
-
-    def can_assign(self, target_type: str, value_type: str) -> bool:
-        t_base, t_struct = _split_type(target_type)
-        v_base, v_struct = _split_type(value_type)
-        if t_base == 'house' and v_base == 'house':
-            return t_struct == v_struct
-        return can_cast(v_base, t_base)
-
-    def types_compatible(self, type1: str, type2: str) -> bool:
-        if type1 == type2:
-            return True
-        if type1 in _CAST_TYPES and type2 in _CAST_TYPES:
-            return True
         return False
 
-    def _check_bool_condition(self, cond_type: Optional[str],
-                               ctx: str, line: int, col: int):
-        if cond_type is not None and cond_type not in _CAST_TYPES:
-            self.add_error(
-                f"Condition of '{ctx}' must evaluate to a boolean-compatible "
-                f"type (brick/beam/tile/glass), got '{cond_type}'",
-                line, col)
+    # -----------------------------------------------------------------------
+    # Body item dispatch (declarations and statements)
+    # -----------------------------------------------------------------------
 
+    def _analyze_body_item(self, node, enclosing_return_type: str):
+        """Dispatch one body item to the appropriate analysis method."""
+        if isinstance(node, VarDeclNode):
+            self._analyze_var_decl(node)
+        elif isinstance(node, AssignNode):
+            self._analyze_assign(node)
+        elif isinstance(node, IfNode):
+            self._analyze_if(node, enclosing_return_type)
+        elif isinstance(node, WhileNode):
+            self._analyze_while(node, enclosing_return_type)
+        elif isinstance(node, DoWhileNode):
+            self._analyze_dowhile(node, enclosing_return_type)
+        elif isinstance(node, ForNode):
+            self._analyze_for(node, enclosing_return_type)
+        elif isinstance(node, SwitchNode):
+            self._analyze_switch(node, enclosing_return_type)
+        elif isinstance(node, BreakNode):
+            self._analyze_break(node)
+        elif isinstance(node, ContinueNode):
+            self._analyze_continue(node)
+        elif isinstance(node, ReturnNode):
+            self._analyze_return(node, enclosing_return_type)
+        elif isinstance(node, IONode):
+            self._analyze_io(node)
+        elif isinstance(node, FunctionCallNode):
+            # Standalone function call statement (return value discarded)
+            self._analyze_expr(node)
+        elif isinstance(node, UnaryOpNode):
+            # Postfix/prefix ++ or -- used as a statement
+            self._analyze_expr(node)
+        # Other node types are silently skipped (should not occur in valid ASTs)
 
-# ============================================================================
-# Module-level helpers
-# ============================================================================
+    # -----------------------------------------------------------------------
+    # Declaration analysis
+    # -----------------------------------------------------------------------
 
-def _resolve_struct_name(node: VarDeclNode) -> Optional[str]:
-    if hasattr(node, 'struct_type_name') and node.struct_type_name:
-        return node.struct_type_name
-    if isinstance(node.type, str) and node.type.startswith('house '):
-        return node.type[6:].strip()
-    return None
+    def _register_var_decl(self, decl: VarDeclNode, is_global: bool = False):
+        """Register a VarDeclNode in the current (or global) scope.
 
+        Used for both global and local variable/constant declarations.
+        The 'initialized' flag on the Symbol is set to True only when
+        an init_value expression is present.
+        """
+        # Determine initial initialization state
+        has_init = decl.init_value is not None
 
-def _extract_struct_name(sym: Symbol) -> Optional[str]:
-    if sym.struct_name:
-        return sym.struct_name
-    if isinstance(sym.type, str) and sym.type.startswith('house '):
-        return sym.type[6:].strip()
-    return None
+        # Parse struct_name for house-typed variables
+        struct_name = decl.struct_type_name
+        base_type = decl.type
+        if isinstance(base_type, str) and base_type.startswith("house "):
+            struct_name = base_type[6:].strip()
+            base_type = "house"
 
+        sym = Symbol(
+            name=decl.name,
+            type=base_type,
+            kind='constant' if decl.is_const else 'variable',
+            is_const=decl.is_const,
+            is_array=decl.is_array,
+            array_dims=decl.array_dims,
+            struct_name=struct_name,
+            initialized=has_init,
+            line=decl.line,
+            col=decl.col,
+        )
 
-def _split_type(type_str: str):
-    if isinstance(type_str, str) and type_str.startswith('house '):
-        return 'house', type_str[6:].strip()
-    return type_str, None
+        if is_global:
+            ok = self.symbol_table.define_global(sym)
+        else:
+            ok = self.symbol_table.define(sym)
+
+        if not ok:
+            self._error(f"Variable '{decl.name}' already declared in this scope",
+                        decl.line, decl.col)
+
+    def _analyze_var_decl(self, decl: VarDeclNode):
+        """Analyze a local variable declaration.
+
+        Steps:
+          1. Analyze the initializer expression (if present) and check its type.
+          2. Register the variable in the current scope.
+        """
+        init_type: Optional[str] = None
+
+        if decl.init_value is not None:
+            # For struct (house) variables, brace initializers are not parsed
+            # into proper expression nodes — they use a sentinel LiteralNode.
+            # Skip type-checking for these; the runtime handles struct init.
+            is_struct_type = (isinstance(decl.type, str) and
+                              decl.type.startswith("house"))
+
+            if not is_struct_type:
+                init_type = self._analyze_expr(decl.init_value)
+
+                # Type-check: initializer must be compatible with declared type
+                if init_type is not None:
+                    decl_ti = TypeInfo(
+                        base_type=decl.type,
+                        is_array=decl.is_array,
+                        array_dims=decl.array_dims,
+                        struct_name=decl.struct_type_name,
+                    )
+                    init_ti = TypeInfo(base_type=init_type)
+                    if not init_ti.can_cast_to(decl_ti):
+                        self._error(
+                            f"Cannot initialise '{decl.name}' (type '{decl.type}') "
+                            f"with value of type '{init_type}'",
+                            decl.line, decl.col
+                        )
+
+        # Spec rule E.2 / E.11 / J.8: constant variables must always be initialized.
+        if decl.is_const and decl.init_value is None:
+            self._error(
+                f"Constant '{decl.name}' must be initialized at declaration",
+                decl.line, decl.col
+            )
+
+        self._register_var_decl(decl, is_global=False)
+
+    # -----------------------------------------------------------------------
+    # Statement analysis
+    # -----------------------------------------------------------------------
+
+    def _analyze_assign(self, node: AssignNode):
+        """Analyze an assignment statement: target op= value.
+
+        Steps:
+          1. Validate that the LHS is a valid assignment target (spec K.3 §2).
+          2. Resolve the target (LHS) to get its type.
+          3. Check that the target is not a constant (cement).
+          4. Analyze the RHS expression.
+          5. Check type compatibility between LHS and RHS.
+          6. Mark the target symbol as initialized.
+        """
+        # Spec K.3 §2: LHS must be a variable, array element, or struct member
+        from semantic.ast import FunctionCallNode as _FCallNode, LiteralNode as _LitNode
+        if isinstance(node.target, (_FCallNode, _LitNode)):
+            self._error(
+                "Invalid assignment target: left-hand side must be a variable, "
+                "array element, or structure member",
+                node.line, node.col
+            )
+            return
+
+        lhs_type = self._resolve_lhs_type(node.target)
+        rhs_type = self._analyze_expr(node.value)
+
+        # Const-assignment check
+        self._check_not_const(node.target, node.line, node.col)
+
+        # Type compatibility
+        if lhs_type is not None and rhs_type is not None:
+            lhs_ti = TypeInfo(base_type=lhs_type)
+            rhs_ti = TypeInfo(base_type=rhs_type)
+            if not rhs_ti.can_cast_to(lhs_ti):
+                self._error(
+                    f"Cannot assign type '{rhs_type}' to type '{lhs_type}'",
+                    node.line, node.col
+                )
+
+        # Mark the target variable as initialized
+        self._mark_initialized(node.target)
+
+    def _analyze_if(self, node: IfNode, return_type: str):
+        """Analyze an if/else statement."""
+        cond_type = self._analyze_expr(node.condition)
+        # TODO: Warn if condition is not a beam (boolean) type.
+        #       Currently, any numeric type is accepted silently.
+
+        self.symbol_table.enter_scope("block")
+        for item in node.then_body:
+            self._analyze_body_item(item, return_type)
+        self.symbol_table.exit_scope()
+
+        if node.else_body is not None:
+            self.symbol_table.enter_scope("block")
+            for item in node.else_body:
+                self._analyze_body_item(item, return_type)
+            self.symbol_table.exit_scope()
+
+    def _analyze_while(self, node: WhileNode, return_type: str):
+        """Analyze a while loop."""
+        self._analyze_expr(node.condition)
+        # TODO: Warn if condition is not a beam type.
+
+        self.symbol_table.enter_scope("while")
+        for item in node.body:
+            self._analyze_body_item(item, return_type)
+        self.symbol_table.exit_scope()
+
+    def _analyze_dowhile(self, node: DoWhileNode, return_type: str):
+        """Analyze a do-while loop."""
+        self.symbol_table.enter_scope("dowhile")
+        for item in node.body:
+            self._analyze_body_item(item, return_type)
+        self.symbol_table.exit_scope()
+
+        self._analyze_expr(node.condition)
+        # TODO: Warn if condition is not a beam type.
+
+    def _analyze_for(self, node: ForNode, return_type: str):
+        """Analyze a for loop.
+
+        The for-init variable is declared in the for scope so it does not
+        leak into the enclosing scope.
+        """
+        self.symbol_table.enter_scope("for")
+
+        if node.init is not None:
+            if isinstance(node.init, VarDeclNode):
+                self._analyze_var_decl(node.init)
+            elif isinstance(node.init, AssignNode):
+                self._analyze_assign(node.init)
+
+        self._analyze_expr(node.condition)
+        self._analyze_expr(node.increment)
+
+        for item in node.body:
+            self._analyze_body_item(item, return_type)
+
+        self.symbol_table.exit_scope()
+
+    def _analyze_switch(self, node: SwitchNode, return_type: str):
+        """Analyze a switch (room) statement."""
+        switch_type = self._analyze_expr(node.expr)
+
+        self.symbol_table.enter_scope("switch")
+        for case in node.cases:
+            if case.value is not None:
+                case_type = self._analyze_expr(case.value)
+                # TODO: Check that case_type is compatible with switch_type.
+            for item in case.body:
+                self._analyze_body_item(item, return_type)
+        self.symbol_table.exit_scope()
+
+    def _analyze_break(self, node: BreakNode):
+        """Validate that 'crack' (break) is inside a loop or switch."""
+        if not self.symbol_table.in_loop():
+            self._error("'crack' (break) used outside a loop or switch",
+                        node.line, node.col)
+
+    def _analyze_continue(self, node: ContinueNode):
+        """Validate that 'mend' (continue) is inside a loop."""
+        if not self.symbol_table.in_loop():
+            self._error("'mend' (continue) used outside a loop",
+                        node.line, node.col)
+
+    def _analyze_return(self, node: ReturnNode, enclosing_return_type: str):
+        """Validate a 'home' (return) statement against the enclosing function type.
+
+        Rules (spec H.9, H.10):
+          - 'home;' (no value) is only valid in field (void) functions.
+          - 'home expr;' is NOT valid in field functions (they must not return a value).
+          - 'home expr;' value type must be compatible with the function's
+            declared return type.
+        """
+        if node.value is None:
+            # Bare return: only valid for void (field) functions
+            if enclosing_return_type != 'field':
+                self._error(
+                    f"Function with return type '{enclosing_return_type}' "
+                    f"must return a value",
+                    node.line, node.col
+                )
+        else:
+            ret_type = self._analyze_expr(node.value)
+            # Spec H.10: field (void) function must not return a value
+            if enclosing_return_type == 'field':
+                self._error(
+                    "field (void) function must not return a value",
+                    node.line, node.col
+                )
+            elif ret_type is not None:
+                ret_ti = TypeInfo(base_type=ret_type)
+                exp_ti = TypeInfo(base_type=enclosing_return_type)
+                if not ret_ti.can_cast_to(exp_ti):
+                    self._error(
+                        f"Return type mismatch: expected '{enclosing_return_type}', "
+                        f"got '{ret_type}'",
+                        node.line, node.col
+                    )
+
+    # Format specifier → compatible arCh types (spec K.2 §3)
+    _FMT_SPEC_TYPES = {
+        '#d': {'tile', 'beam'},
+        '%d': {'tile', 'beam'},
+        '#c': {'brick'},
+        '%c': {'brick'},
+        '#f': {'glass'},
+        '%f': {'glass'},
+        '#s': {'wall'},
+        '%s': {'wall'},
+        '#b': {'tile', 'beam'},
+        '%b': {'tile', 'beam'},
+    }
+
+    def _extract_specifiers(self, fmt: str):
+        """Return ordered list of format specifiers found in a format string."""
+        import re
+        return re.findall(r'[#%][dfcsb]', fmt)
+
+    def _analyze_io(self, node: IONode):
+        """Analyze a view() or write() I/O statement.
+
+        Spec K.2 rules enforced:
+          - write() must have at least one format specifier (§2).
+          - Format specifiers must be compatible with argument types (§3, §4).
+          - write() arguments are marked initialized (they are filled by input).
+        """
+        fmt = node.format_string or ""
+        # Strip surrounding quotes from the format string for specifier scanning
+        clean_fmt = fmt
+        if clean_fmt.startswith('"') and clean_fmt.endswith('"'):
+            clean_fmt = clean_fmt[1:-1]
+
+        specs = self._extract_specifiers(clean_fmt)
+
+        if node.io_type == 'write':
+            # Spec K.2 §2: format string must contain at least one specifier
+            if not specs:
+                self._error(
+                    "write() format string must contain at least one format specifier "
+                    "(#d, #f, #c, #s)",
+                    node.line, node.col
+                )
+
+            # write() fills its arguments — mark them initialized, then type-check
+            arg_types = []
+            for arg in node.args:
+                if isinstance(arg, IdNode):
+                    sym = self.symbol_table.lookup(arg.name)
+                    if sym is not None:
+                        sym.initialized = True
+                        arg.expr_type = sym.type
+                        arg_types.append(sym.type)
+                    else:
+                        self._analyze_expr(arg)
+                        arg_types.append(None)
+                else:
+                    t = self._analyze_expr(arg)
+                    arg_types.append(t)
+
+            # Spec K.2 §4: check specifier/type compatibility
+            for i, (spec, arg_type) in enumerate(zip(specs, arg_types)):
+                if arg_type is None:
+                    continue
+                allowed = self._FMT_SPEC_TYPES.get(spec)
+                if allowed and arg_type not in allowed:
+                    self._error(
+                        f"write() format specifier '{spec}' is not compatible "
+                        f"with argument type '{arg_type}'",
+                        node.line, node.col
+                    )
+        else:
+            # view() — analyze all args normally
+            arg_types = [self._analyze_expr(arg) for arg in node.args]
+
+            # Spec K.2 §3 (output): check specifier/type compatibility
+            for i, (spec, arg_type) in enumerate(zip(specs, arg_types)):
+                if arg_type is None:
+                    continue
+                allowed = self._FMT_SPEC_TYPES.get(spec)
+                if allowed and arg_type not in allowed:
+                    self._error(
+                        f"view() format specifier '{spec}' is not compatible "
+                        f"with argument type '{arg_type}'",
+                        node.line, node.col
+                    )
+
+    # -----------------------------------------------------------------------
+    # Expression analysis and type resolution
+    # -----------------------------------------------------------------------
+    # All expression analysis methods return the resolved type string
+    # (e.g. 'tile', 'glass', 'beam') or None if the type cannot be determined.
+    # They also WRITE the resolved type back to node.expr_type so the TAC
+    # generator can read it without re-running the analyzer.
+
+    def _analyze_expr(self, node: ExprNode) -> Optional[str]:
+        """Dispatch expression analysis and return the resolved type string."""
+        if isinstance(node, LiteralNode):
+            return self._analyze_literal(node)
+        elif isinstance(node, IdNode):
+            return self._analyze_id(node)
+        elif isinstance(node, BinaryOpNode):
+            return self._analyze_binary(node)
+        elif isinstance(node, UnaryOpNode):
+            return self._analyze_unary(node)
+        elif isinstance(node, FunctionCallNode):
+            return self._analyze_call(node)
+        elif isinstance(node, ArrayAccessNode):
+            return self._analyze_array_access(node)
+        elif isinstance(node, StructAccessNode):
+            return self._analyze_struct_access(node)
+        elif isinstance(node, WallConcatNode):
+            return self._analyze_wall_concat(node)
+        return None
+
+    def _analyze_literal(self, node: LiteralNode) -> Optional[str]:
+        """Literals already carry their type; just copy it to expr_type."""
+        node.expr_type = node.literal_type
+        return node.expr_type
+
+    def _analyze_id(self, node: IdNode) -> Optional[str]:
+        """Resolve an identifier to its declared type.
+
+        Checks:
+          - The name must be declared in the current or an enclosing scope.
+          - The variable must have been initialized before use.
+            (Constants and parameters are always initialized.)
+        """
+        sym = self.symbol_table.lookup(node.name)
+        if sym is None:
+            self._error(f"Undeclared identifier '{node.name}'",
+                        node.line, node.col)
+            return None
+
+        if not sym.initialized and sym.kind not in ('constant', 'parameter',
+                                                      'function', 'struct'):
+            self._error(
+                f"Variable '{node.name}' may be used before being initialized",
+                node.line, node.col
+            )
+
+        # Normalize 'house StructName' type string to plain 'house'
+        base = sym.type
+        if isinstance(base, str) and base.startswith("house "):
+            base = "house"
+
+        node.expr_type = base
+        return node.expr_type
+
+    def _analyze_binary(self, node: BinaryOpNode) -> Optional[str]:
+        """Resolve the type of a binary expression.
+
+        For arithmetic operators (+, -, *, /, %):
+          - Both operands must be numeric (in TYPE_ORDER).
+          - Result type is the wider of the two operand types.
+
+        For relational operators (<, <=, >, >=, ==, !=):
+          - Both operands must be compatible (numeric or same type).
+          - Result type is always 'beam' (boolean).
+
+        For logical operators (&& and ||):
+          - Both operands should be beam or numeric.
+          - Result type is 'beam'.
+
+        Special case: '+' with wall operands → wall concatenation.
+          (This is handled at the AST level by WallConcatNode for explicit
+           wall literals, but may reach here for id + id when both are wall.)
+        """
+        left_type = self._analyze_expr(node.left)
+        right_type = self._analyze_expr(node.right)
+
+        if left_type is None or right_type is None:
+            node.expr_type = None
+            return None
+
+        op = node.operator
+
+        # Wall concatenation via '+'
+        if op == '+' and (left_type == 'wall' or right_type == 'wall'):
+            if left_type != 'wall' or right_type != 'wall':
+                self._error(
+                    f"Cannot use '+' between 'wall' and non-wall type",
+                    node.line, node.col
+                )
+            node.expr_type = 'wall'
+            return 'wall'
+
+        # Logical operators → beam result
+        if op in ('&&', '||'):
+            # TODO: Warn if operands are not beam type.
+            node.expr_type = 'beam'
+            return 'beam'
+
+        # Relational operators → beam result
+        if op in ('<', '<=', '>', '>=', '==', '!='):
+            left_ti = TypeInfo(base_type=left_type)
+            right_ti = TypeInfo(base_type=right_type)
+            if not left_ti.can_cast_to(right_ti) and not right_ti.can_cast_to(left_ti):
+                self._error(
+                    f"Incompatible types in relational expression: "
+                    f"'{left_type}' and '{right_type}'",
+                    node.line, node.col
+                )
+            node.expr_type = 'beam'
+            return 'beam'
+
+        # Arithmetic operators (+, -, *, /, %)
+        if op in ('+', '-', '*', '/', '%'):
+            # Spec N.1 §10: modulus (%) only works on tile, brick, and beam.
+            if op == '%' and left_type not in ('tile', 'brick', 'beam'):
+                self._error(
+                    f"Modulus '%' cannot be applied to type '{left_type}' "
+                    f"(only tile, brick, beam allowed)",
+                    node.line, node.col
+                )
+                node.expr_type = None
+                return None
+            if op == '%' and right_type not in ('tile', 'brick', 'beam'):
+                self._error(
+                    f"Modulus '%' cannot be applied to type '{right_type}' "
+                    f"(only tile, brick, beam allowed)",
+                    node.line, node.col
+                )
+                node.expr_type = None
+                return None
+            left_ti = TypeInfo(base_type=left_type)
+            right_ti = TypeInfo(base_type=right_type)
+            wider = left_ti.wider_numeric(right_ti)
+            if wider is None:
+                self._error(
+                    f"Arithmetic operator '{op}' cannot be applied to types "
+                    f"'{left_type}' and '{right_type}'",
+                    node.line, node.col
+                )
+                node.expr_type = None
+                return None
+            node.expr_type = wider.base_type
+            return node.expr_type
+
+        # Unknown operator — propagate left type as a best-effort fallback
+        node.expr_type = left_type
+        return left_type
+
+    def _analyze_unary(self, node: UnaryOpNode) -> Optional[str]:
+        """Resolve the type of a unary expression.
+
+        '-' (negation) — operand must be numeric; result is same type.
+        '!'  (logical not) — result is beam.
+        '++' / '--'      — operand must be numeric; result is same type.
+                           Operand must also be an lvalue (IdNode or array access).
+        """
+        operand_type = self._analyze_expr(node.operand)
+
+        if operand_type is None:
+            node.expr_type = None
+            return None
+
+        op = node.operator
+
+        if op == '!':
+            # TODO: Warn if operand is not beam.
+            node.expr_type = 'beam'
+            return 'beam'
+
+        if op in ('-', '++', '--'):
+            if operand_type not in TYPE_ORDER:
+                self._error(
+                    f"Operator '{op}' cannot be applied to type '{operand_type}'",
+                    node.line, node.col
+                )
+                node.expr_type = None
+                return None
+            if op in ('++', '--') and not isinstance(node.operand, (IdNode, ArrayAccessNode)):
+                self._error(
+                    f"Operator '{op}' requires a variable (lvalue)",
+                    node.line, node.col
+                )
+            # Spec N.2 §11: ++ and -- cannot be applied to constants
+            if op in ('++', '--') and isinstance(node.operand, IdNode):
+                sym = self.symbol_table.lookup(node.operand.name)
+                if sym and sym.is_const:
+                    self._error(
+                        f"Operator '{op}' cannot be applied to constant "
+                        f"'{node.operand.name}'",
+                        node.line, node.col
+                    )
+            node.expr_type = operand_type
+            return operand_type
+
+        node.expr_type = operand_type
+        return operand_type
+
+    def _analyze_call(self, node: FunctionCallNode) -> Optional[str]:
+        """Validate a function call and return its return type.
+
+        Checks:
+          1. The function name must be declared in the global scope.
+          2. Argument count must match (unless the function is variadic,
+             i.e. view/write which have an empty params list as a sentinel).
+          3. Argument types must be compatible with parameter types.
+
+        The return type is written to node.expr_type.
+        """
+        func_sym = self.symbol_table.get_function(node.func_name)
+        if func_sym is None:
+            self._error(f"Undeclared function '{node.func_name}'",
+                        node.line, node.col)
+            node.expr_type = None
+            return None
+
+        # Analyze each argument expression
+        arg_types = [self._analyze_expr(arg) for arg in node.args]
+
+        # Variadic I/O functions (view / write) skip count/type checks
+        is_variadic = node.func_name in ('view', 'write')
+
+        if not is_variadic:
+            expected_params = func_sym.params or []
+            if len(node.args) != len(expected_params):
+                self._error(
+                    f"Function '{node.func_name}' expects "
+                    f"{len(expected_params)} argument(s), "
+                    f"got {len(node.args)}",
+                    node.line, node.col
+                )
+            else:
+                for i, (arg_type, param) in enumerate(
+                        zip(arg_types, expected_params)):
+                    if arg_type is None:
+                        continue
+                    arg_ti = TypeInfo(base_type=arg_type)
+                    param_ti = TypeInfo(base_type=param.type)
+                    if not arg_ti.can_cast_to(param_ti):
+                        self._error(
+                            f"Argument {i + 1} to '{node.func_name}': "
+                            f"cannot pass '{arg_type}' as '{param.type}'",
+                            node.line, node.col
+                        )
+
+        node.expr_type = func_sym.return_type
+        return node.expr_type
+
+    def _analyze_array_access(self, node: ArrayAccessNode) -> Optional[str]:
+        """Resolve the element type of an array access expression.
+
+        Checks:
+          - The base expression must refer to an array variable.
+          - Each index must be an integer (tile or brick) type.
+          - Index count must not exceed the declared dimensions.
+
+        Returns the array's element type (same as its base type).
+        """
+        base_type = self._analyze_expr(node.array)
+
+        for idx in node.indices:
+            idx_type = self._analyze_expr(idx)
+            if idx_type is not None and idx_type not in ('tile', 'brick', 'beam'):
+                self._error(
+                    f"Array index must be an integer type, got '{idx_type}'",
+                    node.line, node.col
+                )
+
+        # TODO: Verify that node.array refers to an array-typed symbol
+        #       (currently only the element type is returned, not validated).
+        # TODO: Validate that the number of indices matches array_dims.
+
+        node.expr_type = base_type
+        return base_type
+
+    def _analyze_struct_access(self, node: StructAccessNode) -> Optional[str]:
+        """Resolve the type of a struct member access expression: struct.member.
+
+        Steps:
+          1. Resolve the base expression type (must be 'house').
+          2. Look up the struct definition to find the member's type.
+          3. Set node.expr_type to the member's type.
+        """
+        # Step 1: resolve base expression
+        base_type = self._analyze_expr(node.struct)
+
+        if base_type != 'house' and (base_type is None or
+                not (isinstance(base_type, str) and base_type.startswith('house'))):
+            self._error(
+                f"Member access '.' applied to non-struct type '{base_type}'",
+                node.line, node.col
+            )
+            node.expr_type = None
+            return None
+
+        # Step 2: locate the struct definition via the base IdNode name
+        struct_def = None
+        if isinstance(node.struct, IdNode):
+            struct_def = self.symbol_table.get_struct_for_var(node.struct.name)
+
+        if struct_def is None or struct_def.members is None:
+            # TODO: Handle chained access (struct.field.subfield)
+            node.expr_type = None
+            return None
+
+        # Step 3: look up the member
+        member_sym = struct_def.members.get(node.member)
+        if member_sym is None:
+            self._error(
+                f"Struct has no member '{node.member}'",
+                node.line, node.col
+            )
+            node.expr_type = None
+            return None
+
+        node.expr_type = member_sym.type
+        return node.expr_type
+
+    def _analyze_wall_concat(self, node: WallConcatNode) -> Optional[str]:
+        """Validate that all parts of a wall concatenation are wall-typed.
+
+        Spec N.5: only wall+wall is valid.
+        wall+brick, brick+brick, and any non-wall type are errors.
+        """
+        for part in node.parts:
+            part_type = self._analyze_expr(part)
+            if part_type is not None and part_type != 'wall':
+                if part_type == 'brick':
+                    self._error(
+                        f"Cannot concatenate 'wall' with 'brick' (spec N.5 §6)",
+                        node.line, node.col
+                    )
+                else:
+                    self._error(
+                        f"Wall concatenation operand has non-wall type '{part_type}'",
+                        node.line, node.col
+                    )
+        node.expr_type = 'wall'
+        return 'wall'
+
+    # -----------------------------------------------------------------------
+    # LHS resolution helpers
+    # -----------------------------------------------------------------------
+    # These helpers resolve the type of an assignment target without going
+    # through the full expression analyzer (which would also check initialization,
+    # which is not yet true for the target before the assignment).
+
+    def _resolve_lhs_type(self, target: ExprNode) -> Optional[str]:
+        """Determine the type of an assignment target expression."""
+        if isinstance(target, IdNode):
+            sym = self.symbol_table.lookup(target.name)
+            if sym:
+                base = sym.type
+                if isinstance(base, str) and base.startswith("house "):
+                    base = "house"
+                return base
+            return None
+        elif isinstance(target, ArrayAccessNode):
+            return self._resolve_lhs_type(target.array)
+        elif isinstance(target, StructAccessNode):
+            return self._analyze_struct_access(target)
+        return None
+
+    def _check_not_const(self, target: ExprNode, line: int, col: int):
+        """Emit an error if the assignment target is a declared constant."""
+        if isinstance(target, IdNode):
+            sym = self.symbol_table.lookup(target.name)
+            if sym and sym.is_const:
+                self._error(
+                    f"Cannot assign to constant '{target.name}'",
+                    line, col
+                )
+
+    def _mark_initialized(self, target: ExprNode):
+        """Mark the target variable as initialized after an assignment.
+
+        Only IdNode targets are tracked; array element and struct field
+        assignments do not update the symbol's initialized flag because
+        the whole array/struct is considered initialized at declaration time.
+        """
+        if isinstance(target, IdNode):
+            sym = self.symbol_table.lookup(target.name)
+            if sym:
+                sym.initialized = True

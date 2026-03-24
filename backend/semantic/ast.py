@@ -1,88 +1,194 @@
+# ===========================================================================
+# ast.py — Abstract Syntax Tree Node Definitions
+# ===========================================================================
+#
+# ROLE IN THE PIPELINE
+# --------------------
+# This file defines every node type that can appear in the AST produced by
+# ASTBuilder (ast_builder.py).  It is a pure data layer: no parsing logic,
+# no semantic logic, and no code-generation logic lives here.
+#
+# DEPENDENCIES
+# ------------
+#   - Used by ast_builder.py  : ASTBuilder instantiates and returns these nodes.
+#   - Used by semantic.py     : SemanticAnalyzer reads and annotates these nodes
+#                               (writing back expr_type after type-checking).
+#   - Will be used by tac.py  : The future TAC generator will walk the same tree.
+#
+# DATA FLOW
+# ---------
+#   Token list (from Lexer)
+#       │
+#       ▼
+#   ASTBuilder  ──creates──►  ProgramNode
+#                                 ├── GlobalDeclNode list  (VarDeclNode / StructDeclNode)
+#                                 └── FunctionNode list
+#                                         ├── ParamNode list
+#                                         └── body: StatementNode / ExprNode list
+#       │
+#       ▼
+#   SemanticAnalyzer  ──reads──►  every node
+#                     ──writes──► expr_type fields on ExprNode subclasses
+#
+# NODE HIERARCHY OVERVIEW
+# -----------------------
+#   ASTNode                         (base: line, col)
+#   ├── ProgramNode                 (root)
+#   ├── FunctionNode
+#   ├── ParamNode
+#   ├── GlobalDeclNode              (abstract base for top-level declarations)
+#   │   ├── VarDeclNode
+#   │   ├── StructDeclNode
+#   │   └── StructMemberNode
+#   ├── StatementNode               (abstract base for statements)
+#   │   ├── AssignNode
+#   │   ├── IfNode
+#   │   ├── WhileNode
+#   │   ├── DoWhileNode
+#   │   ├── ForNode
+#   │   ├── SwitchNode / CaseNode
+#   │   ├── BreakNode / ContinueNode
+#   │   ├── ReturnNode
+#   │   └── IONode
+#   └── ExprNode                    (abstract base for expressions)
+#       ├── BinaryOpNode
+#       ├── UnaryOpNode
+#       ├── LiteralNode
+#       ├── IdNode
+#       ├── ArrayAccessNode
+#       ├── StructAccessNode
+#       ├── FunctionCallNode
+#       └── WallConcatNode
+#
+# TAC READINESS NOTE
+# ------------------
+# Every ExprNode subclass already has an `expr_type` field.  The semantic
+# phase fills this in during type-checking.  A TAC generator can rely on
+# `node.expr_type` to determine what temporary variable type to allocate.
+# ProgramNode → FunctionNode → body list gives the full traversal order
+# needed for sequential TAC emission.
+#
+# ===========================================================================
+
 from dataclasses import dataclass, field
 from typing import Any, Optional, List
 
 
-# ============================================================================
+# ---------------------------------------------------------------------------
 # Base Node
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Every AST node extends ASTNode.  The line/col pair is always populated by
+# ASTBuilder so that SemanticAnalyzer can report errors at the right location.
 
 @dataclass
 class ASTNode:
-    """Base class for all AST nodes"""
+    """Base class for all AST nodes."""
     line: int
     col: int
 
 
-# ============================================================================
+# ---------------------------------------------------------------------------
 # Program Structure
-# ============================================================================
+# ---------------------------------------------------------------------------
+# These nodes describe the top-level layout of a compiled arCh source file.
+# A ProgramNode is always the root; it separates global declarations (prefixed
+# with 'roof') from function definitions.
 
 @dataclass
 class ProgramNode(ASTNode):
-    """Root node: <program> → <global> <program_body>"""
-    globals: list  # List[GlobalDeclNode]
-    functions: list  # List[FunctionNode]
+    """Root node: <program> → <global> <program_body>
+
+    globals   — list of GlobalDeclNode produced by the 'roof' section.
+    functions — list of FunctionNode; must include exactly one blueprint().
+    """
+    globals: list   # List[GlobalDeclNode]
+    functions: list # List[FunctionNode]
 
 
 @dataclass
 class FunctionNode(ASTNode):
-    """Function definition: wall/return_type id(...) { ... }"""
-    return_type: str  # 'tile', 'glass', 'brick', 'beam', 'field', 'wall'
+    """Function definition: return_type id ( params ) { body }
+    or the special entry point:   field blueprint() { body }
+
+    return_type — one of 'tile', 'glass', 'brick', 'beam', 'field', 'wall'
+    name        — function identifier string (or 'blueprint' for the entry point)
+    params      — ordered list of ParamNode
+    body        — flattened list of declaration and statement nodes
+    is_blueprint— True only for the blueprint() entry point
+    """
+    return_type: str
     name: str
-    params: list  # List[ParamNode]
-    body: list    # List[ASTNode]  — statements and declarations
-    is_blueprint: bool = False  # True for blueprint() entry point
+    params: list    # List[ParamNode]
+    body: list      # List[ASTNode]  — statements and declarations interleaved
+    is_blueprint: bool = False
 
 
 @dataclass
 class ParamNode(ASTNode):
-    """Function parameter: type id"""
+    """A single formal parameter in a function signature: type id
+
+    type — primitive type string
+    name — parameter identifier string
+    """
     type: str
     name: str
 
 
-# ============================================================================
+# ---------------------------------------------------------------------------
 # Declarations
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Declarations can appear globally (inside a 'roof' block) or locally inside
+# a function body.  VarDeclNode is reused for both contexts; the semantic
+# analyzer distinguishes them by the scope it is currently traversing.
 
 @dataclass
 class GlobalDeclNode(ASTNode):
-    """Global variable/const/struct declaration"""
+    """Abstract base class for all top-level (roof) declarations.
+
+    Subclasses: VarDeclNode, StructDeclNode.
+    StructMemberNode is NOT a GlobalDeclNode — it lives inside StructDeclNode.
+    """
     pass
 
 
 @dataclass
 class VarDeclNode(GlobalDeclNode):
-    """Variable declaration: type id = expr
+    """Variable (or constant) declaration: [cement] type id [= expr]
 
-    Fields (all preserved from original):
-      type        — primitive type string ('tile', 'glass', 'brick', 'beam', 'wall')
-                    or 'house <StructName>' for struct variables
-      name        — identifier string
-      init_value  — initializer expression node, or None
-      is_const    — True when declared with 'cement'
-      is_array    — True when declared with array dimensions
-      array_dims  — list of dimension sizes (or None)
+    Used for BOTH global declarations and local function-body declarations.
 
-    NEW fields:
-      struct_type_name — when type starts with 'house', stores the bare struct name
-                         so that member lookups work without string-splitting.
+    Fields
+    ------
+    type             — primitive type ('tile', 'glass', 'brick', 'beam', 'wall')
+                       or 'house <StructName>' for struct-typed variables.
+    name             — identifier string.
+    init_value       — initializer expression node, or None if absent.
+    is_const         — True when declared with the 'cement' keyword.
+    is_array         — True when array dimensions were declared.
+    array_dims       — list of integer dimension sizes, e.g. [5] or [3, 4].
+    struct_type_name — for 'house X' types, stores the bare struct name 'X'
+                       so semantic code can call symbol_table.get_struct()
+                       directly without string-splitting.  Automatically
+                       derived in __post_init__ when not provided explicitly.
+
+    Note: ASTBuilder may return a LIST of VarDeclNode from a single statement
+    when multiple names are declared with commas (tile a=1, b=2, c=3;).
     """
     type: str
     name: str
     init_value: Optional['ExprNode'] = None
-    is_const: bool = False  # cement keyword
+    is_const: bool = False      # cement keyword
     is_array: bool = False
-    array_dims: list = None  # List[int]  For arrays
+    array_dims: list = None     # List[int] — dimension sizes
 
-    # NEW: for house-typed variables, records the struct type name separately
-    # so the semantic analyzer can call symbol_table.get_struct() directly.
-    # Populated by ast_builder when it parses "house TypeName varName".
+    # For house-typed variables: the bare struct type name extracted from `type`.
+    # Populated automatically by __post_init__ if not set explicitly by ASTBuilder.
     struct_type_name: Optional[str] = None
 
     def __post_init__(self):
-        # Auto-derive struct_type_name from type field if not set
-        # e.g. type="house Area" → struct_type_name="Area"
+        # Auto-derive struct_type_name from the type field when it is a
+        # 'house X' string.  This avoids repeated string-splitting in the
+        # semantic analyzer.
         if self.struct_type_name is None and isinstance(self.type, str):
             if self.type.startswith("house "):
                 self.struct_type_name = self.type[6:].strip()
@@ -90,123 +196,188 @@ class VarDeclNode(GlobalDeclNode):
 
 @dataclass
 class StructDeclNode(GlobalDeclNode):
-    """Struct declaration: house id { members }"""
+    """Struct type definition: house id { members }
+
+    name    — struct type name (used as a key in the symbol table).
+    members — ordered list of StructMemberNode describing each field.
+    """
     name: str
-    members: list  # List[StructMemberNode]
+    members: list   # List[StructMemberNode]
 
 
 @dataclass
 class StructMemberNode(ASTNode):
-    """Struct member: type id [array_spec]"""
+    """One field inside a struct definition: type id [array_spec]
+
+    type     — primitive type string.
+    name     — field identifier string.
+    is_array — True when the field is declared as an array.
+    array_dims — dimension sizes, or None.
+    """
     type: str
     name: str
     is_array: bool = False
-    array_dims: list = None  # List[int]
+    array_dims: list = None     # List[int]
 
 
-# ============================================================================
+# ---------------------------------------------------------------------------
 # Statements
-# ============================================================================
+# ---------------------------------------------------------------------------
+# StatementNode is the abstract base for all executable statements.
+# Control-flow nodes (IfNode, WhileNode, etc.) each contain a nested `body`
+# list so the tree can represent arbitrarily deep nesting.
 
 @dataclass
 class StatementNode(ASTNode):
-    """Base class for statements"""
+    """Abstract base class for all statement nodes."""
     pass
 
 
 @dataclass
 class AssignNode(StatementNode):
-    """Assignment: lhs = rhs or lhs op= rhs"""
-    target: 'ExprNode'  # id, array access, or struct access
+    """Assignment statement: target = value  or  target op= value
+
+    target   — IdNode, ArrayAccessNode, or StructAccessNode (the LHS).
+    value    — any ExprNode (the RHS).
+    operator — '=', '+=', '-=', '*=', '/=', or '%='.
+    """
+    target: 'ExprNode'
     value: 'ExprNode'
-    operator: str = '='  # '=', '+=', '-=', '*=', '/=', '%='
+    operator: str = '='
 
 
 @dataclass
 class IfNode(StatementNode):
-    """If statement: if (cond) { body } else { else_body }"""
+    """If / else-if / else statement.
+
+    condition — boolean expression that controls branching.
+    then_body — list of nodes executed when condition is true.
+    else_body — list of nodes for the else branch, or None.
+                An else-if is represented as [IfNode(...)].
+    """
     condition: 'ExprNode'
-    then_body: list  # List[ASTNode]
-    else_body: Optional[list] = None  # Optional[List[ASTNode]]
+    then_body: list             # List[ASTNode]
+    else_body: Optional[list] = None   # Optional[List[ASTNode]]
 
 
 @dataclass
 class WhileNode(StatementNode):
-    """While loop: while (cond) { body }"""
+    """While loop: while (condition) { body }"""
     condition: 'ExprNode'
-    body: list  # List[ASTNode]
+    body: list                  # List[ASTNode]
 
 
 @dataclass
 class DoWhileNode(StatementNode):
-    """Do-while loop: do { body } while (cond)"""
-    body: list  # List[ASTNode]
+    """Do-while loop: do { body } while (condition) ;
+
+    Note: body executes BEFORE condition is evaluated for the first time.
+    """
+    body: list                  # List[ASTNode]
     condition: 'ExprNode'
 
 
 @dataclass
 class ForNode(StatementNode):
-    """For loop: for (init; cond; incr) { body }"""
-    init: Optional[ASTNode]  # VarDeclNode or AssignNode
+    """For loop: for (init ; condition ; increment) { body }
+
+    init      — VarDeclNode or AssignNode (or None).
+    condition — loop continuation condition expression.
+    increment — update expression (often a postfix UnaryOpNode).
+    body      — list of body statements.
+    """
+    init: Optional[ASTNode]     # VarDeclNode or AssignNode
     condition: 'ExprNode'
     increment: 'ExprNode'
-    body: list  # List[ASTNode]
+    body: list                  # List[ASTNode]
 
 
 @dataclass
 class SwitchNode(StatementNode):
-    """Switch: room (expr) { cases }"""
+    """Switch statement: room (expr) { cases }
+
+    expr  — expression whose value is matched against each case.
+    cases — ordered list of CaseNode (door ... and ground).
+    """
     expr: 'ExprNode'
-    cases: list  # List[CaseNode]
+    cases: list                 # List[CaseNode]
 
 
 @dataclass
 class CaseNode(ASTNode):
-    """Case: door value: body or ground: body"""
-    value: Optional['ExprNode']  # None for ground (default)
-    body: list  # List[ASTNode]
+    """One branch of a switch statement.
+
+    value      — literal ExprNode to match, or None for the default case.
+    body       — statements in this branch.
+    is_default — True when this is the 'ground:' (default) case.
+    """
+    value: Optional['ExprNode']
+    body: list                  # List[ASTNode]
     is_default: bool = False
 
 
 @dataclass
 class BreakNode(StatementNode):
-    """Break: crack"""
+    """Break out of the current loop or switch: crack ;"""
     pass
 
 
 @dataclass
 class ContinueNode(StatementNode):
-    """Continue: mend"""
+    """Skip to the next loop iteration: mend ;"""
     pass
 
 
 @dataclass
 class ReturnNode(StatementNode):
-    """Return: home expr"""
+    """Function return: home [expr] ;
+
+    value — return expression, or None for void (field) functions.
+    """
     value: Optional['ExprNode'] = None
 
 
 @dataclass
 class IONode(StatementNode):
-    """I/O: view(...) or write(...)"""
-    io_type: str  # 'view' or 'write'
+    """Built-in I/O call: view(...) or write(...)
+
+    io_type       — 'view' (output / printf-like) or 'write' (input / scanf-like).
+    format_string — the leading wall_lit format string.
+    args          — list of expression arguments after the format string.
+                    For 'write', ASTBuilder already strips the leading '&'.
+    """
+    io_type: str                # 'view' or 'write'
     format_string: str
-    args: list  # List[ExprNode]
+    args: list                  # List[ExprNode]
 
 
-# ============================================================================
+# ---------------------------------------------------------------------------
 # Expressions
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Every ExprNode subclass carries an `expr_type` field (Optional[str]).
+# This field is None when the node is first built by ASTBuilder.
+# The SemanticAnalyzer fills it in during the type-checking pass.
+# The TAC generator can read expr_type to know which temporary type to emit.
 
 @dataclass
 class ExprNode(ASTNode):
-    """Base class for expressions"""
-    pass  # expr_type: Optional[str] = None
+    """Abstract base class for all expression nodes.
+
+    Note: expr_type is intentionally left out of the base class so that
+    dataclass inheritance works cleanly.  Each concrete subclass declares
+    its own expr_type field with a default of None.
+    """
+    pass
 
 
 @dataclass
 class BinaryOpNode(ExprNode):
-    """Binary operation: left op right"""
+    """Binary operation: left op right
+
+    Covers arithmetic (+, -, *, /, %), relational (<, <=, >, >=, ==, !=),
+    and logical (&&, ||) operators.
+    expr_type is set by the semantic analyzer after operand types are resolved.
+    """
     left: 'ExprNode'
     operator: str
     right: 'ExprNode'
@@ -215,8 +386,14 @@ class BinaryOpNode(ExprNode):
 
 @dataclass
 class UnaryOpNode(ExprNode):
-    """Unary operation: op expr"""
-    operator: str  # !, ++, --, - (negation)
+    """Unary operation: op expr  or  expr op
+
+    operator  — '!', '-' (negation), '++', or '--'.
+    is_prefix — True for prefix forms (++x, --x, !x, -x).
+                False for postfix forms (x++, x--).
+    expr_type — set by the semantic analyzer.
+    """
+    operator: str
     operand: 'ExprNode'
     is_prefix: bool = True
     expr_type: Optional[str] = None
@@ -224,30 +401,52 @@ class UnaryOpNode(ExprNode):
 
 @dataclass
 class LiteralNode(ExprNode):
-    """Literal value: 123, 3.14, "string", solid, fragile"""
+    """A literal constant value: 123, 3.14, 'c', "string", solid, fragile
+
+    value        — raw lexeme string from the token stream.
+    literal_type — the arCh type inferred from the token type:
+                   'tile' (tile_lit), 'glass' (glass_lit), 'brick' (brick_lit),
+                   'wall' (wall_lit), 'beam' (solid/fragile).
+    expr_type    — same as literal_type; set redundantly by the semantic analyzer
+                   to keep the traversal uniform.
+    """
     value: Any
-    literal_type: str  # 'tile', 'glass', 'brick', 'wall', 'beam'
+    literal_type: str
     expr_type: Optional[str] = None
 
 
 @dataclass
 class IdNode(ExprNode):
-    """Identifier: variable name"""
+    """A bare identifier reference (variable or constant name).
+
+    name      — the identifier string.
+    expr_type — set by the semantic analyzer after the symbol is resolved.
+    """
     name: str
     expr_type: Optional[str] = None
 
 
 @dataclass
 class ArrayAccessNode(ExprNode):
-    """Array access: array[index1][index2]"""
+    """Array element access: array[index]  or  array[i][j]
+
+    array    — the base expression (typically an IdNode).
+    indices  — list of index expressions; length 1 for 1-D, 2 for 2-D.
+    expr_type— element type, set by the semantic analyzer.
+    """
     array: 'ExprNode'
-    indices: list  # List[ExprNode]
+    indices: list               # List[ExprNode]
     expr_type: Optional[str] = None
 
 
 @dataclass
 class StructAccessNode(ExprNode):
-    """Struct member access: struct.member"""
+    """Struct member access: struct_expr . member_name
+
+    struct    — the expression evaluating to a struct instance (usually IdNode).
+    member    — the field name string.
+    expr_type — the field's type, set by the semantic analyzer.
+    """
     struct: 'ExprNode'
     member: str
     expr_type: Optional[str] = None
@@ -255,42 +454,49 @@ class StructAccessNode(ExprNode):
 
 @dataclass
 class FunctionCallNode(ExprNode):
-    """Function call: func(args)"""
+    """Function call expression (also used as a standalone call-statement).
+
+    func_name — the function identifier string.
+    args      — ordered list of argument ExprNodes.
+    expr_type — the function's return type, set by the semantic analyzer.
+    """
     func_name: str
-    args: list  # List[ExprNode]
+    args: list                  # List[ExprNode]
     expr_type: Optional[str] = None
 
 
 @dataclass
 class WallConcatNode(ExprNode):
-    """Wall (string) concatenation: wall1 + wall2"""
-    parts: list  # List[ExprNode]  — wall expressions to concatenate
+    """Wall (string) concatenation: wall_expr + wall_expr + ...
+
+    parts     — ordered list of ExprNodes that are joined into one string.
+                Each element must evaluate to type 'wall'.
+    expr_type — always 'wall'; set by the semantic analyzer.
+    """
+    parts: list                 # List[ExprNode]
     expr_type: Optional[str] = None
 
 
-# ============================================================================
-# Type Information
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Type Information and Type Hierarchy
+# ---------------------------------------------------------------------------
+# TypeInfo wraps a base_type string with metadata (arrays, structs, const).
+# It is used by the semantic analyzer for type comparison and casting decisions.
+#
+# The numeric type hierarchy (used for implicit promotion and demotion):
+#
+#   brick (char)  rank 0  — narrowest
+#   beam  (bool)  rank 1
+#   tile  (int)   rank 2
+#   glass (float) rank 3  — widest
+#
+# wall (string) is COMPLETELY ISOLATED: it cannot be cast to or from any
+# other type.  house (struct) types are also isolated except from themselves.
+#
+# Both widening (brick → glass) and narrowing (glass → tile) are permitted
+# by the language specification, matching C semantics.  Narrowing may
+# truncate values but is NOT reported as a type error.
 
-# ---------------------------------------------------------------------------
-# Centralised type hierarchy — used by TypeInfo and SemanticAnalyzer.
-#
-# The language supports BOTH promotion (widening) and demotion (narrowing)
-# between brick / beam / tile / glass, exactly like C.
-#
-#   brick  (char)    — narrowest  rank 0
-#   beam   (bool)    — rank 1
-#   tile   (int)     — rank 2
-#   glass  (float)   — widest     rank 3
-#
-# wall (string) is COMPLETELY ISOLATED: no casting to or from any other type.
-#
-# Promotion  (e.g. brick → tile): always safe, no precision loss.
-# Demotion   (e.g. glass → tile): allowed but may truncate, just like C.
-#
-# Previous name _NUMERIC_RANK is kept as an alias so existing call-sites
-# that check `x in _NUMERIC_RANK` still work — they just now also cover beam.
-# ---------------------------------------------------------------------------
 TYPE_ORDER: dict = {
     'brick': 0,   # char     — narrowest
     'beam':  1,   # bool
@@ -298,26 +504,40 @@ TYPE_ORDER: dict = {
     'glass': 3,   # float    — widest
 }
 
-# Alias for backward compatibility with existing isinstance / membership checks
+# Backward-compatibility alias.  Existing code checks `x in _NUMERIC_RANK`
+# to test membership in the castable hierarchy.
 _NUMERIC_RANK: dict = TYPE_ORDER
 
-# The set of all types that participate in implicit casting (wall excluded)
+# The frozenset of all types that participate in implicit casting.
+# wall and house are excluded because they are not castable.
 _CASTABLE_TYPES: frozenset = frozenset(TYPE_ORDER.keys())
 
 
 @dataclass
 class TypeInfo:
-    """Type information for semantic analysis.
+    """Wraps a type for use in semantic analysis.
 
-    Preserved from original: base_type, is_array, array_dims, struct_name,
-    is_const, is_numeric(), is_bool(), is_string(), can_cast_to().
+    base_type  — the raw type keyword: 'tile', 'glass', 'brick', 'beam',
+                 'wall', 'field' (void), or 'house' (struct).
+    is_array   — True when this represents an array type.
+    array_dims — dimension sizes for array types.
+    struct_name— the struct type name when base_type == 'house'.
+    is_const   — True when the symbol was declared with 'cement'.
 
-    NEW helpers: wider_numeric(), is_void(), is_struct().
+    Key methods
+    -----------
+    is_numeric()    — True for brick/beam/tile/glass (all castable types).
+    is_bool()       — True for beam.
+    is_string()     — True for wall.
+    is_void()       — True for field.
+    is_struct()     — True for house.
+    wider_numeric() — Returns the wider of two numeric TypeInfos (for expression typing).
+    can_cast_to()   — Returns True when this type is assignment-compatible with target.
     """
-    base_type: str  # 'tile', 'glass', 'brick', 'beam', 'wall', 'field', 'house'
+    base_type: str
     is_array: bool = False
-    array_dims: list = None  # List[int]
-    struct_name: Optional[str] = None  # For house types
+    array_dims: list = None     # List[int]
+    struct_name: Optional[str] = None
     is_const: bool = False
 
     def __str__(self):
@@ -328,18 +548,18 @@ class TypeInfo:
             return f'house {self.struct_name}'
         return self.base_type
 
-    # ── type predicates ───────────────────────────────────────────────────────
+    # ── type predicates ───────────────────────────────────────────────────
 
     def is_numeric(self) -> bool:
         """True for all types in the implicit cast hierarchy: brick, beam, tile, glass."""
         return self.base_type in TYPE_ORDER
 
     def is_bool(self) -> bool:
-        """beam"""
+        """beam (boolean)"""
         return self.base_type == 'beam'
 
     def is_string(self) -> bool:
-        """wall"""
+        """wall (string)"""
         return self.base_type == 'wall'
 
     def is_void(self) -> bool:
@@ -347,23 +567,24 @@ class TypeInfo:
         return self.base_type == 'field'
 
     def is_struct(self) -> bool:
-        """house <n>"""
+        """house <StructName>"""
         return self.base_type == 'house'
 
-    # ── promotion / demotion ──────────────────────────────────────────────────
+    # ── promotion / demotion ─────────────────────────────────────────────
 
     def wider_numeric(self, other: 'TypeInfo') -> Optional['TypeInfo']:
-        """Return the dominant (wider) of two castable types.
+        """Return the dominant (wider) type between self and other.
 
-        For EXPRESSION EVALUATION, always pick the WIDER type so precision
-        is preserved during computation.
+        Used when resolving the result type of a binary expression:
+        the result should be the wider operand's type so precision is kept.
+
         Returns None if either type is not in TYPE_ORDER (e.g. wall, house).
 
         Examples
         --------
-        brick.wider_numeric(tile)  -> tile   (rank 2 > rank 0)
-        tile.wider_numeric(glass)  -> glass  (rank 3 > rank 2)
-        beam.wider_numeric(glass)  -> glass
+        brick.wider_numeric(tile)  → tile   (rank 2 > rank 0)
+        tile.wider_numeric(glass)  → glass  (rank 3 > rank 2)
+        beam.wider_numeric(glass)  → glass
         """
         if self.base_type not in TYPE_ORDER or other.base_type not in TYPE_ORDER:
             return None
@@ -371,23 +592,23 @@ class TypeInfo:
             return self
         return other
 
-    # ── assignment / cast compatibility ───────────────────────────────────────
+    # ── assignment / cast compatibility ──────────────────────────────────
 
     def can_cast_to(self, target: 'TypeInfo') -> bool:
-        """Check whether this type can be implicitly cast to *target*.
+        """Return True when this type is implicitly compatible with target.
 
-        Rules (aligned with language specification):
-          1. Same base type  -> always valid (struct: same name; array: same dims).
-          2. wall is COMPLETELY ISOLATED.
-             wall->X  and  X->wall  are both invalid (except wall->wall).
-          3. Both types are in TYPE_ORDER (brick/beam/tile/glass) -> VALID.
-             The language allows BOTH promotion AND demotion, like C.
-               Promotions: brick->beam, beam->tile, tile->glass, brick->glass ...
-               Demotions:  glass->tile, tile->beam, beam->brick ...
-             Demotion may truncate values but is NOT a type error.
-          4. Arrays: cross-type array assignment is not allowed.
-          5. Structs: must be the same named struct.
-          6. Everything else: exact match only.
+        Rules (aligned with the arCh language specification)
+        -----------------------------------------------------
+        1. Same base type is always valid.
+           - For structs: struct names must also match.
+           - For arrays:  both must be arrays with the same dimension list.
+        2. wall is COMPLETELY ISOLATED.
+           wall→X and X→wall are invalid (except wall→wall, covered by rule 1).
+        3. Both types in TYPE_ORDER (brick/beam/tile/glass) → VALID in BOTH
+           directions.  Demotions (glass→tile) may truncate but are not errors.
+        4. Cross-type array assignment (tile[] = glass[]) is not allowed.
+        5. Structs must share the same named type.
+        6. All other combinations require an exact match (already checked in 1).
         """
         # Rule 1: exact match
         if self.base_type == target.base_type:
@@ -406,9 +627,9 @@ class TypeInfo:
         if self.is_array or target.is_array:
             return False
 
-        # Rule 3: both in castable hierarchy -> valid in both directions
+        # Rule 3: both in castable hierarchy → valid in both directions
         if self.base_type in TYPE_ORDER and target.base_type in TYPE_ORDER:
             return True
 
-        # Rule 6: anything else requires exact match (already checked in rule 1)
+        # Rule 6: anything else requires exact match (already handled by rule 1)
         return False
