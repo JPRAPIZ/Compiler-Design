@@ -244,9 +244,13 @@ function createInterpreter(instructions, onOutput, onInput) {
     } else if (op === "binop") {
       const l = resolve(instr.left, mem);
       const r = resolve(instr.right, mem);
-      mem[instr.dest] = applyBinop(instr.operator, l, r);
+      let bDest = instr.dest;
+      if (bDest.includes("[")) bDest = resolveDestKey(bDest, mem);
+      mem[bDest] = applyBinop(instr.operator, l, r);
     } else if (op === "unary") {
-      mem[instr.dest] = applyUnary(instr.operator, resolve(instr.operand, mem));
+      let uDest = instr.dest;
+      if (uDest.includes("[")) uDest = resolveDestKey(uDest, mem);
+      mem[uDest] = applyUnary(instr.operator, resolve(instr.operand, mem));
     } else if (op === "label" || op === "func_begin" || op === "func_end") {
       if (op === "func_end" && callStack.length) {
         const rec = callStack.pop();
@@ -324,6 +328,23 @@ function createInterpreter(instructions, onOutput, onInput) {
         }
         pc = rec.returnAddr;
       }
+
+    } else if (op === "array_read" || op === "struct_read") {
+      // Resolve subscript/member access: "arr[i]" → resolve index, build flat key
+      const src = instr.src;
+      let val;
+      if (src.includes("[")) {
+        // Array read: resolve variable indices and look up flat key
+        val = resolve(resolveDestKey(src, mem), mem);
+      } else if (src.includes(".")) {
+        // Struct read: try flat key "s.field"
+        const resolved = src;
+        val = (resolved in mem) ? mem[resolved] :
+              (mem !== globalMem && resolved in globalMem) ? globalMem[resolved] : 0;
+      } else {
+        val = resolve(src, mem);
+      }
+      mem[instr.dest] = val;
     }
   }
 

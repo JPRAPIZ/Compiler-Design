@@ -201,12 +201,18 @@ class TACInterpreter:
             left  = self._resolve(instr["left"],  mem)
             right = self._resolve(instr["right"], mem)
             result = self._apply_binop(instr["operator"], left, right)
-            mem[instr["dest"]] = result
+            dest = instr["dest"]
+            if "[" in dest:
+                dest = self._resolve_dest_key(dest, mem)
+            mem[dest] = result
 
         elif op == "unary":
             operand = self._resolve(instr["operand"], mem)
             result  = self._apply_unary(instr["operator"], operand)
-            mem[instr["dest"]] = result
+            dest = instr["dest"]
+            if "[" in dest:
+                dest = self._resolve_dest_key(dest, mem)
+            mem[dest] = result
 
         # ── control flow ──────────────────────────────────────────────────
         elif op == "label":
