@@ -1045,7 +1045,9 @@ class SemanticAnalyzer:
           - Each index must be an integer (tile or brick) type.
           - Index count must not exceed the declared dimensions.
 
-        Returns the array's element type (same as its base type).
+        Returns the array's ELEMENT type:
+          - wall[i]  → brick   (a wall is a sequence of brick characters)
+          - T[i]     → T       (element type equals the declared array base type)
         """
         base_type = self._analyze_expr(node.array)
 
@@ -1057,12 +1059,15 @@ class SemanticAnalyzer:
                     node.line, node.col
                 )
 
-        # TODO: Verify that node.array refers to an array-typed symbol
-        #       (currently only the element type is returned, not validated).
-        # TODO: Validate that the number of indices matches array_dims.
+        # A wall is a sequence of brick characters; wall[i] yields brick.
+        # All other array types return their own base type as the element type.
+        if base_type == 'wall':
+            elem_type = 'brick'
+        else:
+            elem_type = base_type
 
-        node.expr_type = base_type
-        return base_type
+        node.expr_type = elem_type
+        return elem_type
 
     def _analyze_struct_access(self, node: StructAccessNode) -> Optional[str]:
         """Resolve the type of a struct member access expression: struct.member.
