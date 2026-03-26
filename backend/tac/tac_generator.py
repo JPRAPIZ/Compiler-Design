@@ -5,7 +5,7 @@ from semantic.ast import (
     AssignNode, IfNode, WhileNode, DoWhileNode, ForNode,
     SwitchNode, CaseNode, BreakNode, ContinueNode, ReturnNode, IONode,
     BinaryOpNode, UnaryOpNode, LiteralNode, IdNode,
-    ArrayAccessNode, StructAccessNode, FunctionCallNode, WallConcatNode,
+    ArrayAccessNode, StructAccessNode, FunctionCallNode, WallConcatNode, ArrayInitNode,
     ASTNode, ExprNode,
 )
 
@@ -32,6 +32,12 @@ class TACGenerator:
         # Break/continue target stacks — pushed/popped around loop bodies
         self._break_stack: List[str] = []
         self._continue_stack: List[str] = []
+
+        # Scope-aware name mangling for inner-scope variable shadowing.
+        # Each entry is a dict mapping original_name → mangled_name.
+        # Outermost scope (function level) maps name → name (identity).
+        self._scope_stack: List[dict] = []
+        self._scope_counter: int = 0   # monotonic counter for unique suffixes
 
     # ── public entry point ────────────────────────────────────────────────────
 
@@ -88,6 +94,11 @@ class TACGenerator:
             return
 
         if isinstance(decl, VarDeclNode):
+            if isinstance(decl.init_value, ArrayInitNode):
+                # Global array with brace init
+                self._gen_array_init(decl.name, decl.init_value)
+                return
+
             if decl.init_value is not None:
                 src = self._gen_expr(decl.init_value)
             else:
@@ -100,20 +111,66 @@ class TACGenerator:
                 "src": src,
             })
 
+    # ── scope management for name mangling ──────────────────────────────────
+
+    def _enter_scope(self):
+        """Push a new inner scope for variable name mangling."""
+        self._scope_stack.append({})
+
+    def _exit_scope(self):
+        """Pop the innermost scope."""
+        if self._scope_stack:
+            self._scope_stack.pop()
+
+    def _declare_name(self, name: str) -> str:
+        """Register a variable declaration in the current scope.
+
+        If a variable with the same name exists in an outer scope, the inner
+        declaration gets a mangled name (e.g. x__s2) to avoid collision.
+        Function-level (depth 1) declarations keep their bare name.
+        """
+        if len(self._scope_stack) <= 1:
+            # Function-level scope — no mangling needed
+            if self._scope_stack:
+                self._scope_stack[-1][name] = name
+            return name
+
+        # Inner scope — check if name exists in any outer scope
+        for scope in self._scope_stack[:-1]:
+            if name in scope:
+                # Name collision — mangle the inner declaration
+                self._scope_counter += 1
+                mangled = f"{name}__s{self._scope_counter}"
+                self._scope_stack[-1][name] = mangled
+                return mangled
+
+        # No collision — use bare name
+        if self._scope_stack:
+            self._scope_stack[-1][name] = name
+        return name
+
+    def _resolve_name(self, name: str) -> str:
+        """Look up a variable name in the scope stack (innermost first).
+
+        Returns the mangled name if the variable was shadowed, or the
+        original name if not found in any scope (e.g. globals).
+        """
+        for scope in reversed(self._scope_stack):
+            if name in scope:
+                return scope[name]
+        return name  # global or unknown — use as-is
+
     # ── function definitions ──────────────────────────────────────────────────
 
     def _gen_function(self, func: FunctionNode):
-        """Emit TAC for one function definition.
-
-        Structure emitted:
-            func_begin  name  params=[...]
-            <body instructions>
-            func_end    name
-
-        Parameters are listed in func_begin so the runtime can bind them
-        when the function is called.
-        """
+        """Emit TAC for one function definition."""
         param_names = [p.name for p in func.params]
+
+        # Push function-level scope and register parameters
+        self._scope_stack = []
+        self._enter_scope()
+        for pname in param_names:
+            self._scope_stack[-1][pname] = pname
 
         self._emit({
             "op": "func_begin",
@@ -128,6 +185,8 @@ class TACGenerator:
             "op": "func_end",
             "name": func.name,
         })
+
+        self._exit_scope()
 
     # ── statement dispatch ────────────────────────────────────────────────────
 
@@ -156,32 +215,69 @@ class TACGenerator:
         elif isinstance(node, IONode):
             self._gen_io(node)
         elif isinstance(node, FunctionCallNode):
-            # Standalone call statement — return value is discarded
             self._gen_expr(node)
         elif isinstance(node, UnaryOpNode):
-            # Standalone postfix/prefix ++ or -- used as a statement
             self._gen_expr(node)
-        # Other node types are silently skipped
 
     # ── declarations ─────────────────────────────────────────────────────────
 
     def _gen_var_decl(self, node: VarDeclNode):
-        """Emit TAC for a local variable declaration.
+        """Emit TAC for a local variable declaration with scope-aware naming.
 
-        tile x = expr;   →   <emit expr into t1>   x = t1
-        tile x;          →   x = 0          (zero-init)
-        wall s = "hi";   →   s = "hi"
+        For arrays with brace initializers (ArrayInitNode), emits per-element
+        assignment instructions: arr[0] = val0, arr[1] = val1, ...
         """
+        mangled = self._declare_name(node.name)
+
+        if isinstance(node.init_value, ArrayInitNode):
+            # Array brace initializer: {v1, v2, ...} or {{r1}, {r2}}
+            self._gen_array_init(mangled, node.init_value)
+            return
+
         if node.init_value is not None:
             src = self._gen_expr(node.init_value)
         else:
-            src = '""' if node.type == "wall" else "0"
+            if node.type == "wall":
+                src = '""'
+            elif node.type == "glass" or (isinstance(node.type, str) and
+                                           node.type.startswith("glass")):
+                src = "0.0"
+            else:
+                src = "0"
 
         self._emit({
             "op": "assign",
-            "dest": node.name,
+            "dest": mangled,
             "src": src,
         })
+
+    def _gen_array_init(self, arr_name: str, init_node: 'ArrayInitNode'):
+        """Emit per-element assignments for an array brace initializer.
+
+        1-D: tile arr[3] = {10, 20, 30};
+             → arr[0] = 10, arr[1] = 20, arr[2] = 30
+
+        2-D: tile mat[2][3] = {{1,2,3},{4,5,6}};
+             → mat[0][0] = 1, mat[0][1] = 2, ..., mat[1][2] = 6
+        """
+        for i, elem in enumerate(init_node.elements):
+            if isinstance(elem, ArrayInitNode):
+                # 2-D: elem is a nested ArrayInitNode for one row
+                for j, inner_elem in enumerate(elem.elements):
+                    val = self._gen_expr(inner_elem)
+                    self._emit({
+                        "op": "assign",
+                        "dest": f"{arr_name}[{i}][{j}]",
+                        "src": val,
+                    })
+            else:
+                # 1-D: elem is a plain expression
+                val = self._gen_expr(elem)
+                self._emit({
+                    "op": "assign",
+                    "dest": f"{arr_name}[{i}]",
+                    "src": val,
+                })
 
     # ── assignment ────────────────────────────────────────────────────────────
 
@@ -233,7 +329,7 @@ class TACGenerator:
         StructAccessNode  → "s.field"
         """
         if isinstance(target, IdNode):
-            return target.name
+            return self._resolve_name(target.name)
 
         if isinstance(target, ArrayAccessNode):
             base = self._lhs_name(target.array)
@@ -251,17 +347,7 @@ class TACGenerator:
     # ── control flow ─────────────────────────────────────────────────────────
 
     def _gen_if(self, node: IfNode):
-        """Emit TAC for an if / else-if / else statement.
-
-        Pattern:
-            <eval condition → cond_t>
-            if_false cond_t goto L_else
-            <then body>
-            goto L_end
-            L_else:
-            <else body>        (omitted if no else)
-            L_end:
-        """
+        """Emit TAC for an if / else-if / else statement."""
         cond_t = self._gen_expr(node.condition)
 
         if node.else_body:
@@ -270,14 +356,18 @@ class TACGenerator:
 
             self._emit({"op": "jump_if_false", "cond": cond_t, "target": l_else})
 
+            self._enter_scope()
             for stmt in node.then_body:
                 self._gen_stmt(stmt)
+            self._exit_scope()
 
             self._emit({"op": "jump", "target": l_end})
             self._emit({"op": "label", "name": l_else})
 
+            self._enter_scope()
             for stmt in node.else_body:
                 self._gen_stmt(stmt)
+            self._exit_scope()
 
             self._emit({"op": "label", "name": l_end})
 
@@ -285,22 +375,15 @@ class TACGenerator:
             l_end = self._new_label()
             self._emit({"op": "jump_if_false", "cond": cond_t, "target": l_end})
 
+            self._enter_scope()
             for stmt in node.then_body:
                 self._gen_stmt(stmt)
+            self._exit_scope()
 
             self._emit({"op": "label", "name": l_end})
 
     def _gen_while(self, node: WhileNode):
-        """Emit TAC for a while loop.
-
-        Pattern:
-            L_start:
-            <eval condition → cond_t>
-            if_false cond_t goto L_end
-            <body>
-            goto L_start
-            L_end:
-        """
+        """Emit TAC for a while loop."""
         l_start = self._new_label()
         l_end = self._new_label()
 
@@ -311,8 +394,10 @@ class TACGenerator:
         cond_t = self._gen_expr(node.condition)
         self._emit({"op": "jump_if_false", "cond": cond_t, "target": l_end})
 
+        self._enter_scope()
         for stmt in node.body:
             self._gen_stmt(stmt)
+        self._exit_scope()
 
         self._emit({"op": "jump", "target": l_start})
         self._emit({"op": "label", "name": l_end})
@@ -321,16 +406,7 @@ class TACGenerator:
         self._continue_stack.pop()
 
     def _gen_dowhile(self, node: DoWhileNode):
-        """Emit TAC for a do-while loop.
-
-        Pattern:
-            L_start:
-            <body>
-            L_cond:
-            <eval condition → cond_t>
-            if cond_t goto L_start
-            L_end:
-        """
+        """Emit TAC for a do-while loop."""
         l_start = self._new_label()
         l_cond = self._new_label()
         l_end = self._new_label()
@@ -340,8 +416,10 @@ class TACGenerator:
 
         self._emit({"op": "label", "name": l_start})
 
+        self._enter_scope()
         for stmt in node.body:
             self._gen_stmt(stmt)
+        self._exit_scope()
 
         self._emit({"op": "label", "name": l_cond})
         cond_t = self._gen_expr(node.condition)
@@ -352,21 +430,7 @@ class TACGenerator:
         self._continue_stack.pop()
 
     def _gen_for(self, node: ForNode):
-        """Emit TAC for a for loop.
-
-        Pattern:
-            <init>
-            L_start:
-            <eval condition → cond_t>
-            if_false cond_t goto L_end
-            <body>
-            L_incr:
-            <increment>
-            goto L_start
-            L_end:
-
-        L_incr is the continue target so 'mend' skips to the increment.
-        """
+        """Emit TAC for a for loop."""
         l_start = self._new_label()
         l_incr = self._new_label()
         l_end = self._new_label()
@@ -374,7 +438,9 @@ class TACGenerator:
         self._break_stack.append(l_end)
         self._continue_stack.append(l_incr)
 
-        # Init (may be VarDeclNode or AssignNode or None)
+        # For loop gets its own scope (init var lives here)
+        self._enter_scope()
+
         if node.init is not None:
             self._gen_stmt(node.init)
 
@@ -386,45 +452,29 @@ class TACGenerator:
             self._gen_stmt(stmt)
 
         self._emit({"op": "label", "name": l_incr})
-        # Increment is an expression node (typically a UnaryOpNode)
         self._gen_expr(node.increment)
 
         self._emit({"op": "jump", "target": l_start})
         self._emit({"op": "label", "name": l_end})
 
+        self._exit_scope()
+
         self._break_stack.pop()
         self._continue_stack.pop()
 
     def _gen_switch(self, node: SwitchNode):
-        """Emit TAC for a switch (room) statement.
-
-        Pattern for each non-default case:
-            <eval switch expr → sw_t>
-            t_cmp = sw_t == case_val
-            if t_cmp goto L_case_N
-            ...
-            goto L_default   (or L_end if no default)
-            L_case_N:
-            <case body>
-            goto L_end        (implicit fall-through prevention)
-            ...
-            L_default:
-            <default body>
-            L_end:
-        """
+        """Emit TAC for a switch (room) statement."""
         sw_t = self._gen_expr(node.expr)
         l_end = self._new_label()
 
         self._break_stack.append(l_end)
 
-        # Pre-allocate labels for each case body
         case_labels = [self._new_label() for _ in node.cases]
         default_label = None
         for i, case in enumerate(node.cases):
             if case.is_default:
                 default_label = case_labels[i]
 
-        # Emit comparison jumps
         for i, case in enumerate(node.cases):
             if case.is_default:
                 continue
@@ -439,25 +489,19 @@ class TACGenerator:
             })
             self._emit({"op": "jump_if", "cond": cmp_t, "target": case_labels[i]})
 
-        # Jump to default or end
         if default_label:
             self._emit({"op": "jump", "target": default_label})
         else:
             self._emit({"op": "jump", "target": l_end})
 
-        # Emit case bodies
-        # Spec K.5 §12: without crack (break), execution falls through to the
-        # next case. Only emit an unconditional jump to l_end when the case body
-        # has no BreakNode at the end (i.e. break was explicit).
         for i, case in enumerate(node.cases):
             self._emit({"op": "label", "name": case_labels[i]})
+            self._enter_scope()
             for stmt in case.body:
                 self._gen_stmt(stmt)
-            # Only jump to end if the last statement was NOT a break
-            # (break itself already emits a jump to l_end via _gen_break)
+            self._exit_scope()
             last = case.body[-1] if case.body else None
             if last is None or not isinstance(last, BreakNode):
-                # Fall through: jump to NEXT case label (or l_end if last case)
                 if i + 1 < len(node.cases):
                     self._emit({"op": "jump", "target": case_labels[i + 1]})
                 else:
@@ -529,6 +573,11 @@ class TACGenerator:
             return self._gen_struct_access(node)
         if isinstance(node, WallConcatNode):
             return self._gen_wall_concat(node)
+        if isinstance(node, ArrayInitNode):
+            # ArrayInitNode should not appear as a standalone expression —
+            # it is handled specially in _gen_var_decl. If we get here,
+            # return "0" as a fallback.
+            return "0"
         # Fallback: return a literal "0" so the pipeline never crashes
         return "0"
 
@@ -561,8 +610,8 @@ class TACGenerator:
         return val_str
 
     def _gen_id(self, node: IdNode) -> str:
-        """Return the identifier name directly — no instruction needed."""
-        return node.name
+        """Return the scope-resolved identifier name."""
+        return self._resolve_name(node.name)
 
     def _gen_binary(self, node: BinaryOpNode) -> str:
         """Emit one binop instruction and return the result temporary.

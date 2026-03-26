@@ -381,11 +381,13 @@ class Lexer:
         )
 
     def is_delim17(self, ch) -> bool:
-        # delim17 { operators , ) , [ , ; , whitespace }
+        # delim17 { operators , ) , ] , [ , . , , , ; , whitespace }
+        # After ']': comma for arg/element lists,
+        # [ for next dimension are all valid, ] for closing outer dimension.
         return (
             self.is_eof(ch)
             or self.is_operator_char(ch)
-            or ch in (')', '[', ';')
+            or ch in (')', '[', ']', ',', ';')
             or self.is_whitespace(ch)
         )
 

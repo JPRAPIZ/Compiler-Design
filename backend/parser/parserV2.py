@@ -145,6 +145,104 @@ def _filter_expected_for_nt(base_nt: str, raw: set) -> set:
     return filtered if filtered else raw
 
 
+# ---------------------------------------------------------------------------
+# Operator grouping for cleaner error messages
+# ---------------------------------------------------------------------------
+# Instead of listing all 13 binary operators individually, collapse them
+# into categories when showing "expected one of [...]".
+
+_ARITHMETIC_OPS = frozenset({'+', '-', '*', '/', '%'})
+_RELATIONAL_OPS = frozenset({'<', '<=', '>', '>=', '==', '!='})
+_LOGICAL_OPS    = frozenset({'&&', '||'})
+_ALL_BINARY_OPS = _ARITHMETIC_OPS | _RELATIONAL_OPS | _LOGICAL_OPS
+
+_COMPOUND_OPS   = frozenset({'+=', '-=', '*=', '/=', '%='})
+
+
+def _collapse_operators(tokens: set) -> list:
+    """Replace individual operator tokens with group labels where applicable.
+
+    For example, if all 5 arithmetic operators are present, replace them
+    with a single 'arithmetic operator (+, -, *, /, %)' entry.
+    Tokens that are not operators pass through unchanged.
+    """
+    result = set()
+    remaining_ops = tokens & _ALL_BINARY_OPS
+
+    if remaining_ops:
+        # Check if we have full groups
+        if _ARITHMETIC_OPS <= remaining_ops:
+            result.add('arithmetic operator (+, -, *, /, %)')
+            remaining_ops -= _ARITHMETIC_OPS
+        if _RELATIONAL_OPS <= remaining_ops:
+            result.add('relational operator (<, <=, >, >=, ==, !=)')
+            remaining_ops -= _RELATIONAL_OPS
+        if _LOGICAL_OPS <= remaining_ops:
+            result.add('logical operator (&&, ||)')
+            remaining_ops -= _LOGICAL_OPS
+        # Any leftover individual operators
+        for op in remaining_ops:
+            result.add(f"'{op}'")
+
+    if _COMPOUND_OPS <= tokens:
+        result.add('compound assignment (+=, -=, *=, /=, %=)')
+        tokens = tokens - _COMPOUND_OPS
+    else:
+        for op in tokens & _COMPOUND_OPS:
+            result.add(f"'{op}'")
+
+    # Add all non-operator tokens with readable names
+    for t in tokens - _ALL_BINARY_OPS - _COMPOUND_OPS:
+        result.add(_readable_token(t))
+
+    return sorted(result)
+
+
+# ---------------------------------------------------------------------------
+# Human-readable token name mapping
+# ---------------------------------------------------------------------------
+# Converts raw grammar token type strings (as seen in PREDICT_SET) into
+# display names that make sense to an arCh programmer reading error messages.
+
+_TOKEN_DISPLAY = {
+    # Data types
+    'tile':       'tile (int)',
+    'glass':      'glass (float)',
+    'brick':      'brick (char)',
+    'wall':       'wall (string)',
+    'beam':       'beam (bool)',
+    'field':      'field (void)',
+    'house':      'house (struct)',
+    # Keywords
+    'blueprint':  'blueprint (main)',
+    'cement':     'cement (const)',
+    'roof':       'roof (global)',
+    'home':       'home (return)',
+    'crack':      'crack (break)',
+    'mend':       'mend (continue)',
+    'room':       'room (switch)',
+    'door':       'door (case)',
+    'ground':     'ground (default)',
+    'view':       'view (output)',
+    'write':      'write (input)',
+    'solid':      'solid (true)',
+    'fragile':    'fragile (false)',
+    # Literals
+    'tile_lit':   'integer literal',
+    'glass_lit':  'float literal',
+    'brick_lit':  'char literal',
+    'wall_lit':   'string literal',
+    # Identifier
+    'id':         'identifier',
+    # Symbols — keep as-is (already readable)
+}
+
+
+def _readable_token(tok: str) -> str:
+    """Convert a raw token type string to a human-readable display name."""
+    return _TOKEN_DISPLAY.get(tok, tok)
+
+
 class Parser:
     IGNORE_TYPES = ("space", "tab", "newline", "Single-Line Comment", "Multi-Line Comment")
 
@@ -219,19 +317,50 @@ class Parser:
         if self.current_type == expected_type:
             self._consume()
             return
-        self._add_error(f"Unexpected {self.current_lexeme!r}; expected {expected_type!r}")
+        expected_display = _readable_token(expected_type)
+        actual_display = self.current_lexeme
+        self._add_error(f"Unexpected {actual_display!r}; expected {expected_display}")
 
     # -- error reporting -----------------------------------------------------
+
+    # Human-readable names for common non-terminals, used to give context
+    # about WHAT the parser was trying to parse when the error occurred.
+    _NT_CONTEXT = {
+        '<program>':          'program start (global declaration or function)',
+        '<program_body>':     'function definition or main program',
+        '<global>':           'global declaration (roof ...)',
+        '<global_dec>':       'global declaration',
+        '<global_var>':       'global variable declaration',
+        '<data_type>':        'data type',
+        '<expression>':       'expression',
+        '<exp_op>':           'operator or end of expression',
+        '<condition>':        'condition',
+        '<cond_op>':          'operator or closing parenthesis',
+        '<for_op>':           'operator or end of for clause',
+        '<statement>':        'statement',
+        '<func_body>':        'declaration or statement',
+        '<if_statement>':     'if statement',
+        '<for_statement>':    'for loop',
+        '<for_dec>':          'for loop initializer',
+        '<for_exp>':          'for loop condition',
+        '<while_statement>':  'while loop',
+        '<dowhile_statement>':'do-while loop',
+        '<switch_statement>': 'switch (room) statement',
+        '<io_statement>':     'I/O statement (view/write)',
+        '<assign_statement>': 'assignment or expression statement',
+        '<return_statement>': 'return (home) statement',
+        '<declaration>':      'variable declaration',
+        '<variable>':         'variable declaration',
+        '<param_list>':       'parameter list',
+        '<value>':            'literal value',
+        '<assign_rhs>':       'expression value',
+    }
 
     def syntax_error(self, nt: str):
         base = _base_nt(nt)
         expected = set(_EXPECTED.get(base, frozenset()))
 
-        # For-loop clause disambiguation:
-        # <for_op> and <for_exp> are nullable with FOLLOW = {) ;}
-        # Both appear in the precomputed set; trim to whichever is valid here.
-        # Apply cosmetic filtering before context-specific overrides so that
-        # intentional additions (e.g. ';' for for_condition) are not stripped.
+        # For-loop clause disambiguation
         expected = _filter_expected_for_nt(base, expected)
 
         if base in ('<for_op>', '<for_exp>', '<id_type>'):
@@ -242,7 +371,19 @@ class Parser:
                 expected.discard(';')
                 expected.add(')')
 
-        self._add_error(f"Unexpected Character {self.current_lexeme!r}; Expected one of {sorted(expected)}")
+        # Convert raw token names to human-readable forms
+        readable = sorted({_readable_token(t) for t in expected})
+
+        # Build the error message with context
+        context = self._NT_CONTEXT.get(base, '')
+        actual = self.current_lexeme
+
+        if context:
+            msg = f"Unexpected {actual!r} in {context}; expected one of {readable}"
+        else:
+            msg = f"Unexpected {actual!r}; expected one of {readable}"
+
+        self._add_error(msg)
 
     def _add_error(self, msg: str):
         self.errors.append({

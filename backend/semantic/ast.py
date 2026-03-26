@@ -181,8 +181,12 @@ class VarDeclNode(GlobalDeclNode):
     is_array: bool = False
     array_dims: list = None     # List[int] — dimension sizes
 
+    # Brace initializer list for arrays and structs: [ExprNode, ...]
+    # For 2D arrays: [[ExprNode, ...], [ExprNode, ...], ...]
+    # None when no brace initializer was provided.
+    init_list: Optional[list] = None
+
     # For house-typed variables: the bare struct type name extracted from `type`.
-    # Populated automatically by __post_init__ if not set explicitly by ASTBuilder.
     struct_type_name: Optional[str] = None
 
     def __post_init__(self):
@@ -474,6 +478,18 @@ class WallConcatNode(ExprNode):
     expr_type — always 'wall'; set by the semantic analyzer.
     """
     parts: list                 # List[ExprNode]
+    expr_type: Optional[str] = None
+
+
+@dataclass
+class ArrayInitNode(ExprNode):
+    """Brace-enclosed array initializer: {val1, val2, ...}
+
+    elements  — flat list of ExprNodes for 1-D arrays, or list of
+                ArrayInitNode for 2-D arrays ({row1}, {row2}).
+    expr_type — set to the array element type by the semantic analyzer.
+    """
+    elements: list              # List[ExprNode] or List[ArrayInitNode]
     expr_type: Optional[str] = None
 
 

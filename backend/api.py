@@ -52,7 +52,7 @@ class ErrorResponse(BaseModel):
     start_col:  Optional[int] = None
     end_line:   Optional[int] = None
     end_col:    Optional[int] = None
-    _kind:      Optional[str] = None   # "lex" | "syntax" | "semantic" | "runtime"
+    kind:       Optional[str] = None   # "lex" | "syntax" | "semantic" | "runtime"
 
 
 class LexResult(BaseModel):
@@ -98,7 +98,7 @@ class RunResult(BaseModel):
 # =============================================================================
 
 def _make_errors(raw: list, kind: str) -> List[dict]:
-    """Attach a _kind tag to every raw error from the compiler phases.
+    """Attach a kind tag to every raw error from the compiler phases.
 
     All phases return dicts with at minimum "message", "line"/"col".
     Plain strings are accepted as a safety fallback.
@@ -115,7 +115,7 @@ def _make_errors(raw: list, kind: str) -> List[dict]:
                 "start_col":  None,
                 "end_line":   None,
                 "end_col":    None,
-                "_kind":      kind,
+                "kind":      kind,
             })
         else:
             # All phases (lex, parse, semantic) return dicts
@@ -130,7 +130,7 @@ def _make_errors(raw: list, kind: str) -> List[dict]:
                 "start_col":  e.get("start_col",  col),
                 "end_line":   e.get("end_line"),
                 "end_col":    e.get("end_col"),
-                "_kind":      kind,
+                "kind":      kind,
             })
     return out
 
@@ -197,7 +197,7 @@ def lex_source(body: LexRequest):
             start_col=e.get("start_col"),
             end_line=e.get("end_line"),
             end_col=e.get("end_col"),
-            _kind="lex",
+            kind="lex",
         )
         for e in lexer.errors
     ]

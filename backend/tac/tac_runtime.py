@@ -76,7 +76,9 @@ class TACInterpreter:
         self._fmt_cache: Dict[str, str] = {}
 
         # Compiled regex for format specifier detection (used in _format_view)
-        self._spec_re = re.compile(r'[#%][dfcsb]')
+        # Supports: #d, #f, #c, #s, #b, and #.Nf (precision, e.g. #.2f)
+        # arCh uses # exclusively — % is not a valid format prefix
+        self._spec_re = re.compile(r'#(?:\.\d+)?[dfcsb]')
 
         # Literal value cache — avoids re-parsing "123", "3.14", "True", etc.
         # on every instruction execution inside tight loops.
@@ -187,7 +189,13 @@ class TACInterpreter:
 
         # ── data movement ─────────────────────────────────────────────────
         if op == "assign":
-            mem[instr["dest"]] = self._resolve(instr["src"], mem)
+            dest = instr["dest"]
+            val = self._resolve(instr["src"], mem)
+            # If dest contains subscripts with variable indices (e.g. "arr[i]"),
+            # resolve the index variables to build the correct flat key.
+            if "[" in dest:
+                dest = self._resolve_dest_key(dest, mem)
+            mem[dest] = val
 
         elif op == "binop":
             left  = self._resolve(instr["left"],  mem)
@@ -400,6 +408,25 @@ class TACInterpreter:
         )
         return 0
 
+    def _resolve_dest_key(self, dest: str, mem: Dict[str, Any]) -> str:
+        """Resolve variable indices in an assignment destination key.
+
+        "arr[0]"  → "arr[0]"  (literal index, no change)
+        "arr[i]"  → "arr[3]"  (resolve i to its runtime value)
+        "arr[i][j]" → "arr[3][1]"
+        """
+        match = re.match(r'^(\w+)((?:\[[^\]]+\])+)$', dest)
+        if not match:
+            return dest
+        base = match.group(1)
+        indices_str = match.group(2)
+        index_exprs = re.findall(r'\[([^\]]+)\]', indices_str)
+        resolved = []
+        for idx_expr in index_exprs:
+            idx = self._resolve(idx_expr.strip(), mem)
+            resolved.append(str(int(idx)) if isinstance(idx, (int, float)) else str(idx))
+        return base + "".join(f"[{r}]" for r in resolved)
+
     def _resolve_complex(self, src: str, mem: Dict[str, Any]) -> Any:
         """Resolve array subscript or struct member access strings.
 
@@ -426,19 +453,37 @@ class TACInterpreter:
             base_name = match.group(1)
             indices_str = match.group(2)
             index_exprs = re.findall(r'\[([^\]]+)\]', indices_str)
-            base_val = self._resolve(base_name, mem)
+
+            # First try: resolve indices and build a flat key for lookup.
+            # TAC stores array elements as flat keys like "arr[0]" or "arr[1][2]".
+            resolved_indices = []
             for idx_expr in index_exprs:
                 idx = self._resolve(idx_expr.strip(), mem)
-                try:
-                    if isinstance(base_val, dict):
-                        base_val = base_val[idx]
-                    elif isinstance(base_val, list):
-                        base_val = base_val[int(idx)]
-                    else:
+                resolved_indices.append(idx)
+
+            flat_key = base_name + "".join(f"[{i}]" for i in resolved_indices)
+            # Check flat key in local memory, then global
+            if flat_key in mem:
+                return mem[flat_key]
+            if mem is not self.global_memory and flat_key in self.global_memory:
+                return self.global_memory[flat_key]
+
+            # Second try: base is an actual list/dict object in memory
+            base_val = self._resolve(base_name, mem)
+            if isinstance(base_val, (list, dict)):
+                for idx in resolved_indices:
+                    try:
+                        if isinstance(base_val, dict):
+                            base_val = base_val[idx]
+                        elif isinstance(base_val, list):
+                            base_val = base_val[int(idx)]
+                        else:
+                            return 0
+                    except (KeyError, IndexError, TypeError):
                         return 0
-                except (KeyError, IndexError, TypeError):
-                    return 0
-            return base_val
+                return base_val
+
+            return 0
 
         # Plain name
         return self._resolve(src, mem)
@@ -581,7 +626,7 @@ class TACInterpreter:
             \\n  → newline
             \\t  → tab
 
-        The legacy % prefix is also accepted so existing tests still pass.
+        arCh uses # as the format prefix exclusively (e.g. #d, #f, #.2f).
 
         If there are NO format specifiers and there are arguments, all
         argument values are joined with spaces and returned.  This handles
@@ -644,17 +689,24 @@ class TACInterpreter:
     def _format_specifier(self, spec: str, value: Any) -> str:
         """Format one value according to a single format specifier.
 
-        arCh uses # as the format prefix (e.g. #d, #f, #s).
-        The % prefix is also accepted for compatibility.
-        The prefix character is stripped before comparison so both work.
+        arCh uses # as the format prefix exclusively.
+        Supports: #d, #f, #c, #s, #b, and #.Nf (precision specifier).
+        Example: #.2f formats a float to 2 decimal places.
         """
-        # Normalise: treat the prefix (#  or %) as equivalent
         kind = spec[-1]   # the letter: d / f / c / s / b
+        # Extract precision for #.Nf patterns (e.g. "#.2f" → precision=2)
+        precision = None
+        if '.' in spec:
+            try:
+                precision = int(spec[spec.index('.') + 1:-1])
+            except (ValueError, IndexError):
+                pass
         try:
             if kind == "d":
                 return str(int(value))
             if kind == "f":
-                return f"{float(value):.7f}"
+                prec = precision if precision is not None else 7
+                return f"{float(value):.{prec}f}"
             if kind == "c":
                 if isinstance(value, int):
                     return chr(value)

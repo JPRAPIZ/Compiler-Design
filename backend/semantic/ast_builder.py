@@ -85,7 +85,7 @@ from semantic.ast import (
     ReturnNode, IONode,
     ExprNode, BinaryOpNode, UnaryOpNode, LiteralNode,
     IdNode, ArrayAccessNode, StructAccessNode, FunctionCallNode,
-    WallConcatNode,
+    WallConcatNode, ArrayInitNode,
 )
 
 
@@ -319,8 +319,8 @@ class ASTBuilder:
         Array declarations have no init_expr (brace initializers are skipped).
         """
         if self._is("["):
-            dims = self._array_dec_dims()
-            return None, True, dims
+            dims, arr_init = self._array_dec_dims()
+            return arr_init, True, dims
         else:
             init_val = self._global_init_expr()
             # Skip any additional comma-separated names in the same statement
@@ -365,11 +365,12 @@ class ASTBuilder:
 
     # ── Array dimension parsing helpers ──────────────────────────────────────
 
-    def _array_dec_dims(self) -> List[int]:
-        """Consume [size?][size?] array declaration brackets; return dim list.
+    def _array_dec_dims(self):
+        """Consume [size?][size?] array declaration brackets.
 
-        Each dimension is either an integer literal or defaults to 0 if omitted.
-        Handles optional '= { ... }' brace initializers by calling _skip_brace_init().
+        Returns (dims, init_node):
+          dims      — list of int dimension sizes
+          init_node — ArrayInitNode if '= { ... }' was present, else None
         """
         dims = []
         self._eat("[")
@@ -378,6 +379,7 @@ class ASTBuilder:
         else:
             dims.append(0)
         self._eat("]")
+        init_node = None
         # possible second dimension
         if self._is("["):
             self._eat("[")
@@ -387,10 +389,10 @@ class ASTBuilder:
                 dims.append(0)
             self._eat("]")
             if self._is("="):
-                self._skip_brace_init()
+                init_node = self._parse_brace_init()
         elif self._is("="):
-            self._skip_brace_init()
-        return dims
+            init_node = self._parse_brace_init()
+        return dims, init_node
 
     def _wall_array_skip(self):
         """Skip a wall array declaration entirely (wall arrays are not supported)."""
@@ -407,12 +409,15 @@ class ASTBuilder:
             self._skip_brace_init()
 
     def _skip_brace_init(self):
-        """Skip a brace initializer block: = { ... } or = { { ... } }.
+        """Skip a brace initializer block without parsing values.
 
-        Array initializers are intentionally discarded; the semantic analyzer
-        does not currently validate array element types.
+        Used for struct initializers where full parsing isn't needed.
         """
         self._eat("=")
+        self._consume_braces()
+
+    def _consume_braces(self):
+        """Consume a balanced { ... } block, discarding content."""
         depth = 0
         while not self._is("EOF"):
             if self._is("{"):
@@ -425,6 +430,49 @@ class ASTBuilder:
                     break
             else:
                 self._advance()
+
+    def _parse_brace_init(self) -> 'ArrayInitNode':
+        """Parse a brace initializer: = { val1, val2, ... } or = { {r1}, {r2} }.
+
+        Returns an ArrayInitNode containing the parsed element expressions.
+        Handles both 1-D arrays ({1, 2, 3}) and 2-D arrays ({{1,2},{3,4}}).
+        """
+        line, col = self._line(), self._col()
+        self._eat("=")
+        return self._parse_brace_list(line, col)
+
+    def _parse_brace_list(self, line=None, col=None) -> 'ArrayInitNode':
+        """Parse { val, val, ... } or { {row}, {row}, ... }."""
+        if line is None:
+            line, col = self._line(), self._col()
+        self._eat("{")
+        elements = []
+
+        if self._is("}"):
+            # Empty initializer
+            self._eat("}")
+            return ArrayInitNode(elements=[], line=line, col=col)
+
+        if self._is("{"):
+            # 2-D: nested brace lists
+            elements.append(self._parse_brace_list())
+            while self._is(","):
+                self._eat(",")
+                if self._is("{"):
+                    elements.append(self._parse_brace_list())
+                else:
+                    break
+        else:
+            # 1-D: comma-separated values
+            elements.append(self._expression())
+            while self._is(","):
+                self._eat(",")
+                if self._is("}"):
+                    break
+                elements.append(self._expression())
+
+        self._eat("}")
+        return ArrayInitNode(elements=elements, line=line, col=col)
 
     # ── Struct global declaration ─────────────────────────────────────────────
 
@@ -532,7 +580,7 @@ class ASTBuilder:
                 self._eat("=")
                 init_val = self._value_literal()
             elif self._is("["):
-                self._array_dec_dims()
+                self._array_dec_dims()  # unpack: (dims, init)
                 init_val = None
             else:
                 init_val = None
@@ -749,7 +797,8 @@ class ASTBuilder:
                 init_val = self._expression()
             elif self._is("["):
                 is_array = True
-                dims = self._array_dec_dims()
+                dims, arr_init = self._array_dec_dims()
+                init_val = arr_init  # ArrayInitNode or None
             nodes.append(VarDeclNode(type=dtype, name=name, init_value=init_val,
                                      is_const=False, is_array=is_array,
                                      array_dims=dims, line=line, col=col))

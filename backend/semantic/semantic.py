@@ -91,7 +91,7 @@ from semantic.ast import (
     ReturnNode, IONode,
     ExprNode, BinaryOpNode, UnaryOpNode, LiteralNode,
     IdNode, ArrayAccessNode, StructAccessNode, FunctionCallNode,
-    WallConcatNode,
+    WallConcatNode, ArrayInitNode,
     TypeInfo, TYPE_ORDER, _CASTABLE_TYPES,
 )
 from semantic.symbol_table import SymbolTable, Symbol
@@ -480,13 +480,22 @@ class SemanticAnalyzer:
         init_type: Optional[str] = None
 
         if decl.init_value is not None:
-            # For struct (house) variables, brace initializers are not parsed
-            # into proper expression nodes — they use a sentinel LiteralNode.
-            # Skip type-checking for these; the runtime handles struct init.
+            # Struct brace initializers use a sentinel — skip type-checking
             is_struct_type = (isinstance(decl.type, str) and
                               decl.type.startswith("house"))
 
-            if not is_struct_type:
+            # Array brace initializers (ArrayInitNode) — analyze element
+            # types but skip the scalar type-compatibility check
+            is_array_init = isinstance(decl.init_value, ArrayInitNode)
+
+            if is_struct_type:
+                pass  # no type-checking for struct brace inits
+            elif is_array_init:
+                # Analyze each element for type errors, but don't compare
+                # against the array's declared type since ArrayInitNode
+                # carries multiple values, not a single scalar type
+                self._analyze_expr(decl.init_value)
+            else:
                 init_type = self._analyze_expr(decl.init_value)
 
                 # Type-check: initializer must be compatible with declared type
@@ -790,6 +799,8 @@ class SemanticAnalyzer:
             return self._analyze_struct_access(node)
         elif isinstance(node, WallConcatNode):
             return self._analyze_wall_concat(node)
+        elif isinstance(node, ArrayInitNode):
+            return self._analyze_array_init(node)
         return None
 
     def _analyze_literal(self, node: LiteralNode) -> Optional[str]:
@@ -1110,6 +1121,20 @@ class SemanticAnalyzer:
                     )
         node.expr_type = 'wall'
         return 'wall'
+
+    def _analyze_array_init(self, node: ArrayInitNode) -> Optional[str]:
+        """Analyze a brace-enclosed array initializer {v1, v2, ...}.
+
+        Walks each element, resolves its type, and returns the common
+        element type. For 2-D arrays (nested ArrayInitNode), recurses.
+        """
+        elem_type = None
+        for elem in node.elements:
+            t = self._analyze_expr(elem)
+            if t is not None and elem_type is None:
+                elem_type = t
+        node.expr_type = elem_type
+        return elem_type
 
     # -----------------------------------------------------------------------
     # LHS resolution helpers

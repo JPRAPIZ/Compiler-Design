@@ -60,6 +60,12 @@ function createInterpreter(instructions, onOutput, onInput) {
       }
       return inner.length === 1 ? inner.charCodeAt(0) : 0;
     }
+    // Flat-key array access: resolve "arr[i]" by resolving index variables
+    if (operand.includes("[")) {
+      const resolved = resolveDestKey(operand, mem);
+      if (resolved in mem) return mem[resolved];
+      if (mem !== globalMem && resolved in globalMem) return globalMem[resolved];
+    }
     if (operand.includes(".")) {
       const f = parseFloat(operand);
       if (!isNaN(f)) return f;
@@ -68,6 +74,19 @@ function createInterpreter(instructions, onOutput, onInput) {
     if (!isNaN(n) && String(n) === operand) return n;
     runtimeErrors.push(`Runtime error: undefined variable '${operand}'`);
     return 0;
+  }
+
+  // Resolve variable indices in dest/src keys: "arr[i]" → "arr[3]"
+  function resolveDestKey(key, mem) {
+    const m = key.match(/^(\w+)((?:\[[^\]]+\])+)$/);
+    if (!m) return key;
+    const base = m[1];
+    const idxExprs = [...m[2].matchAll(/\[([^\]]+)\]/g)].map(x => x[1]);
+    const parts = idxExprs.map(expr => {
+      const v = resolve(expr, mem);
+      return typeof v === "number" ? String(Math.trunc(v)) : String(v);
+    });
+    return base + parts.map(p => `[${p}]`).join("");
   }
 
   // ── arithmetic ────────────────────────────────────────────────────────────
@@ -127,12 +146,20 @@ function createInterpreter(instructions, onOutput, onInput) {
   }
 
   // ── format helpers ────────────────────────────────────────────────────────
-  const SPEC_RE = /[#%][dfcsb]/g;
+  // arCh uses # exclusively — % is not a valid format prefix
+  // Supports: #d, #f, #c, #s, #b, and #.Nf (precision, e.g. #.2f)
+  const SPEC_RE = /#(?:\.\d+)?[dfcsb]/g;
 
   function formatSpecifier(spec, value) {
     const kind = spec[spec.length - 1];
+    // Extract precision for #.Nf (e.g. "#.2f" → 2)
+    let precision = null;
+    const dotIdx = spec.indexOf(".");
+    if (dotIdx !== -1) {
+      precision = parseInt(spec.slice(dotIdx + 1, -1), 10);
+    }
     if (kind === "d") return String(Math.trunc(Number(value)));
-    if (kind === "f") return Number(value).toFixed(7);
+    if (kind === "f") return Number(value).toFixed(precision !== null ? precision : 7);
     if (kind === "c")
       return typeof value === "number"
         ? String.fromCharCode(value)
@@ -211,7 +238,9 @@ function createInterpreter(instructions, onOutput, onInput) {
     const op = instr.op || "";
 
     if (op === "assign") {
-      mem[instr.dest] = resolve(instr.src, mem);
+      let dest = instr.dest;
+      if (dest.includes("[")) dest = resolveDestKey(dest, mem);
+      mem[dest] = resolve(instr.src, mem);
     } else if (op === "binop") {
       const l = resolve(instr.left, mem);
       const r = resolve(instr.right, mem);
@@ -264,7 +293,7 @@ function createInterpreter(instructions, onOutput, onInput) {
       let cleanFmt = fmt;
       if (cleanFmt.startsWith('"') && cleanFmt.endsWith('"'))
         cleanFmt = cleanFmt.slice(1, -1);
-      const specs = [...cleanFmt.matchAll(/[#%][dfcsb]/g)].map((m) => m[0]);
+      const specs = [...cleanFmt.matchAll(/#(?:\.\d+)?[dfcsb]/g)].map((m) => m[0]);
 
       for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -432,7 +461,7 @@ function App() {
 
       const phaseErrors = Array.isArray(data.errors) ? data.errors : [];
       if (phaseErrors.length > 0) {
-        const kind = (phaseErrors[0]?._kind ?? "semantic").toUpperCase();
+        const kind = (phaseErrors[0]?.kind ?? "semantic").toUpperCase();
         setErrors(phaseErrors);
         setErrorKind(kind);
         applyErrorsToEditor(phaseErrors);
@@ -677,7 +706,6 @@ function App() {
                         caretColor: "#fde047",
                       }}
                     />
-                    <span className="animate-pulse text-yellow-300">█</span>
                   </span>
                 )}
               </div>
