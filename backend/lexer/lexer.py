@@ -1,4 +1,3 @@
-
 from typing import List
 from .tokens import Token
 
@@ -170,8 +169,10 @@ class Lexer:
         # strip trailing zeros
         frac_part = frac_part.rstrip('0')
 
+        # Always keep at least one decimal place so glass literals
+        # remain distinguishable from tile literals (e.g. "6.0" not "6")
         if frac_part == "":
-            return int_part
+            frac_part = "0"
         return f"{int_part}.{frac_part}"
 
     def normalize_int(self, lexeme: str) -> str:
@@ -360,11 +361,13 @@ class Lexer:
         )
 
     def is_delim15(self, ch) -> bool:
-        # delim15 { operators , { , ) , ] , ; , ++, --, whitespace }
+        # delim15 { operators , { , ) , [ , ] , . , , , : , ; , ++, --, whitespace }
+        # After ')': comma for arg lists, dot for member access, [ for array access,
+        # : for ternary/switch, are all valid.
         return (
             self.is_eof(ch)
             or self.is_operator_char(ch)
-            or ch in ('{', ')', ']', ';', '++', '--')
+            or ch in ('{', ')', '[', ']', '.', ',', ':', ';', '++', '--')
             or self.is_whitespace(ch)
         )
 
@@ -391,16 +394,16 @@ class Lexer:
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
-            or ch in ('{', '-', '&', "'", '"')
+            or ch in ('{', '+', '-', '&', "'", '"')
             or self.is_whitespace(ch)
         )
 
     def is_delim19(self, ch) -> bool:
-        # delim19 { alpha_num , + , - , whitespace }
+        # delim19 { alpha_num , }, + , - , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
-            or ch in ('+', '-')
+            or ch in ('}', '+', '-')
             or self.is_whitespace(ch)
         )
 
@@ -2153,6 +2156,7 @@ class Lexer:
                 if ch == '=':
                     self.advance()
                     state = 152
+                    continue
 
                 if self.is_delim10(ch):
                     state = 151
@@ -3641,16 +3645,11 @@ class Lexer:
                 state = 295
                 continue
 
-
             elif state == 297:
-                if ch is None or self.is_whitespace(ch):
-                    state = 298
-                    continue
-
-                lexeme = self.source[start_pos:self.pos]
-                raise LexerError(
-                    f"Error on line {start_line}: {lexeme!r} is an Invalid Lexeme - Invalid Delimiter"
-                )
+                # After closing */, any character is a valid delimiter.
+                # Comments can appear before any token, not just whitespace.
+                state = 298
+                continue
 
             elif state == 298:
                 lexeme = self.source[start_pos:self.pos]
