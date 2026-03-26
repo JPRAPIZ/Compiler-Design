@@ -441,6 +441,13 @@ class SemanticAnalyzer:
         # Determine initial initialization state
         has_init = decl.init_value is not None
 
+        # Spec F.9/F.11: Arrays declared with a fixed size get default values
+        # automatically (tile=0, glass=0.0, wall="", brick=\0, beam=fragile).
+        # They are always considered initialized even without an explicit
+        # brace initializer.
+        if decl.is_array:
+            has_init = True
+
         # Parse struct_name for house-typed variables
         struct_name = decl.struct_type_name
         base_type = decl.type

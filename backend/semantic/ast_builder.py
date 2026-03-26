@@ -763,14 +763,19 @@ class ASTBuilder:
 
         if dtype == "wall":
             # wall id [= wall_init] [, id [= wall_init]] ... ;
+            # OR wall id[size] [= {...}] ;
             init_val = None
+            is_arr = False
+            dims = None
             if self._is("="):
                 self._eat("=")
                 init_val = self._wall_init_expr()
             elif self._is("["):
-                self._array_dec_dims()
+                is_arr = True
+                dims, arr_init = self._array_dec_dims()
+                init_val = arr_init
             nodes.append(VarDeclNode(type="wall", name=name, init_value=init_val,
-                                     is_const=False, is_array=False, array_dims=None,
+                                     is_const=False, is_array=is_arr, array_dims=dims,
                                      line=line, col=col))
             while self._is(","):
                 self._eat(",")
