@@ -558,6 +558,10 @@ class SemanticAnalyzer:
         lhs_type = self._resolve_lhs_type(node.target)
         rhs_type = self._analyze_expr(node.value)
 
+        # Annotate target expr_type so TAC generator can emit conversion info
+        if lhs_type is not None and hasattr(node.target, 'expr_type'):
+            node.target.expr_type = lhs_type
+
         # Const-assignment check
         self._check_not_const(node.target, node.line, node.col)
 

@@ -54,6 +54,13 @@ class TACGenerator:
         self._temp_count = 0
         self._label_count = 0
 
+        # Collect struct definitions for member-order lookup during struct init.
+        # Maps struct_name → [member_name_1, member_name_2, ...]
+        self._struct_defs: dict = {}
+        for decl in program.globals:
+            if isinstance(decl, StructDeclNode):
+                self._struct_defs[decl.name] = [m.name for m in decl.members]
+
         # 1. Global initialisations
         for decl in program.globals:
             self._gen_global(decl)
@@ -95,8 +102,27 @@ class TACGenerator:
 
         if isinstance(decl, VarDeclNode):
             if isinstance(decl.init_value, ArrayInitNode):
+                # Check if this is a struct brace init (house-typed variable)
+                struct_type_name = decl.struct_type_name
+                if struct_type_name and struct_type_name in self._struct_defs:
+                    member_names = self._struct_defs[struct_type_name]
+                    for i, elem in enumerate(decl.init_value.elements):
+                        if i < len(member_names):
+                            val = self._gen_expr(elem)
+                            self._emit({
+                                "op": "assign",
+                                "dest": f"{decl.name}.{member_names[i]}",
+                                "src": val,
+                            })
+                    return
+
                 # Global array with brace init
                 self._gen_array_init(decl.name, decl.init_value)
+                return
+
+            # Array without brace init — emit per-element default values
+            if decl.is_array and decl.array_dims:
+                self._gen_array_default(decl.name, decl.type, decl.array_dims)
                 return
 
             if decl.init_value is not None:
@@ -226,12 +252,35 @@ class TACGenerator:
 
         For arrays with brace initializers (ArrayInitNode), emits per-element
         assignment instructions: arr[0] = val0, arr[1] = val1, ...
+
+        For struct variables with brace initializers (house Point p = {3, 7}),
+        emits per-member assignments: p.x = 3, p.y = 7
         """
         mangled = self._declare_name(node.name)
 
         if isinstance(node.init_value, ArrayInitNode):
+            # Check if this is a struct brace init (house-typed variable)
+            struct_type_name = node.struct_type_name
+            if struct_type_name and struct_type_name in self._struct_defs:
+                # Struct brace init: emit per-member assignments
+                member_names = self._struct_defs[struct_type_name]
+                for i, elem in enumerate(node.init_value.elements):
+                    if i < len(member_names):
+                        val = self._gen_expr(elem)
+                        self._emit({
+                            "op": "assign",
+                            "dest": f"{mangled}.{member_names[i]}",
+                            "src": val,
+                        })
+                return
+
             # Array brace initializer: {v1, v2, ...} or {{r1}, {r2}}
             self._gen_array_init(mangled, node.init_value)
+            return
+
+        # Array without brace init — emit per-element default values
+        if node.is_array and node.array_dims:
+            self._gen_array_default(mangled, node.type, node.array_dims)
             return
 
         if node.init_value is not None:
@@ -245,11 +294,20 @@ class TACGenerator:
             else:
                 src = "0"
 
-        self._emit({
+        instr = {
             "op": "assign",
             "dest": mangled,
             "src": src,
-        })
+        }
+        # Annotate with destination type for implicit conversion at runtime.
+        # Only needed for numeric types (brick/beam/tile/glass) where the
+        # source expression type differs from the declared variable type.
+        decl_type = node.type
+        if decl_type in ("brick", "beam", "tile", "glass"):
+            src_type = getattr(node.init_value, 'expr_type', None) if node.init_value else None
+            if src_type and src_type != decl_type and src_type in ("brick", "beam", "tile", "glass"):
+                instr["dest_type"] = decl_type
+        self._emit(instr)
 
     def _gen_array_init(self, arr_name: str, init_node: 'ArrayInitNode'):
         """Emit per-element assignments for an array brace initializer.
@@ -281,6 +339,25 @@ class TACGenerator:
 
     # ── assignment ────────────────────────────────────────────────────────────
 
+    def _gen_array_default(self, arr_name: str, elem_type: str, dims: list):
+        """Emit per-element default value assignments for an uninitialized array.
+
+        Spec F.11: arrays with fixed size get default values:
+          tile=0, glass=0.0, wall="", brick=0 (\\0), beam=False
+
+        1-D: tile arr[3]  →  arr[0]=0, arr[1]=0, arr[2]=0
+        2-D: tile mat[2][3]  →  mat[0][0]=0 ... mat[1][2]=0
+        """
+        default_val = '""' if elem_type == "wall" else "0.0" if elem_type == "glass" else "0"
+        valid_dims = [d for d in dims if isinstance(d, int) and d > 0]
+        if len(valid_dims) == 1:
+            for i in range(valid_dims[0]):
+                self._emit({"op": "assign", "dest": f"{arr_name}[{i}]", "src": default_val})
+        elif len(valid_dims) == 2:
+            for i in range(valid_dims[0]):
+                for j in range(valid_dims[1]):
+                    self._emit({"op": "assign", "dest": f"{arr_name}[{i}][{j}]", "src": default_val})
+
     def _gen_assign(self, node: AssignNode):
         """Emit TAC for an assignment statement.
 
@@ -298,12 +375,24 @@ class TACGenerator:
         dest = self._lhs_name(node.target)
         rhs_operand = self._gen_expr(node.value)
 
+        # Determine if implicit conversion annotation is needed
+        dest_type = getattr(node.target, 'expr_type', None)
+        src_type = getattr(node.value, 'expr_type', None)
+        _NUMERIC = ("brick", "beam", "tile", "glass")
+        need_cast = (dest_type and src_type
+                     and dest_type != src_type
+                     and dest_type in _NUMERIC
+                     and src_type in _NUMERIC)
+
         if node.operator == "=":
-            self._emit({
+            instr = {
                 "op": "assign",
                 "dest": dest,
                 "src": rhs_operand,
-            })
+            }
+            if need_cast:
+                instr["dest_type"] = dest_type
+            self._emit(instr)
         else:
             # Compound: lower  x op= rhs  into  x = x op rhs
             raw_op = node.operator[:-1]   # "+=" → "+"
@@ -315,11 +404,14 @@ class TACGenerator:
                 "operator": raw_op,
                 "right": rhs_operand,
             })
-            self._emit({
+            instr = {
                 "op": "assign",
                 "dest": dest,
                 "src": tmp,
-            })
+            }
+            if need_cast:
+                instr["dest_type"] = dest_type
+            self._emit(instr)
 
     def _lhs_name(self, target) -> str:
         """Compute the string name for an LHS target.
@@ -536,9 +628,14 @@ class TACGenerator:
         view(fmt, arg1, arg2, ...)  →  { op: "view", fmt: "...", args: [...] }
         write(fmt, &var1, ...)      →  { op: "write", fmt: "...", args: [...] }
 
-        Each argument expression is evaluated into an operand string first.
+        For view(), arguments are evaluated as expressions (their values matter).
+        For write(), arguments are DESTINATIONS — we need their flat key names
+        (e.g. "A[i]") so the runtime can store the input value into them.
         """
-        arg_operands = [self._gen_expr(a) for a in node.args]
+        if node.io_type == "write":
+            arg_operands = [self._lhs_name(a) for a in node.args]
+        else:
+            arg_operands = [self._gen_expr(a) for a in node.args]
         self._emit({
             "op": node.io_type,          # "view" or "write"
             "fmt": node.format_string,

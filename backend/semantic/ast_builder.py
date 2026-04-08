@@ -870,8 +870,7 @@ class ASTBuilder:
                 vline, vcol = line, col
                 init_val = None
                 if self._is("="):
-                    self._skip_brace_init()
-                    init_val = _brace_sentinel()
+                    init_val = self._parse_brace_init()
                 nodes.append(VarDeclNode(
                     type=f"house {type_name}", name=var_tok.lexeme,
                     init_value=init_val, is_const=False,
@@ -883,8 +882,7 @@ class ASTBuilder:
                     extra_name = extra_tok.lexeme if extra_tok else ""
                     extra_init = None
                     if self._is("="):
-                        self._skip_brace_init()
-                        extra_init = _brace_sentinel()
+                        extra_init = self._parse_brace_init()
                     nodes.append(VarDeclNode(
                         type=f"house {type_name}", name=extra_name,
                         init_value=extra_init, is_const=False,
@@ -897,8 +895,7 @@ class ASTBuilder:
             var_name = var_tok.lexeme if var_tok else ""
             init_val = None
             if self._is("="):
-                self._skip_brace_init()
-                init_val = _brace_sentinel()
+                init_val = self._parse_brace_init()
             nodes.append(VarDeclNode(
                 type=f"house {type_name}", name=var_name,
                 init_value=init_val, is_const=False,
@@ -910,8 +907,7 @@ class ASTBuilder:
                 extra_name = extra_tok.lexeme if extra_tok else ""
                 extra_init = None
                 if self._is("="):
-                    self._skip_brace_init()
-                    extra_init = _brace_sentinel()
+                    extra_init = self._parse_brace_init()
                 nodes.append(VarDeclNode(
                     type=f"house {type_name}", name=extra_name,
                     init_value=extra_init, is_const=False,

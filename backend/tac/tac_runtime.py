@@ -195,7 +195,11 @@ class TACInterpreter:
             # resolve the index variables to build the correct flat key.
             if "[" in dest:
                 dest = self._resolve_dest_key(dest, mem)
-            mem[dest] = val
+            # Implicit type conversion when dest_type annotation is present
+            dest_type = instr.get("dest_type")
+            if dest_type:
+                val = self._coerce_to_type(val, dest_type)
+            self._target_mem(dest, mem)[dest] = val
 
         elif op == "binop":
             left  = self._resolve(instr["left"],  mem)
@@ -204,7 +208,7 @@ class TACInterpreter:
             dest = instr["dest"]
             if "[" in dest:
                 dest = self._resolve_dest_key(dest, mem)
-            mem[dest] = result
+            self._target_mem(dest, mem)[dest] = result
 
         elif op == "unary":
             operand = self._resolve(instr["operand"], mem)
@@ -212,7 +216,7 @@ class TACInterpreter:
             dest = instr["dest"]
             if "[" in dest:
                 dest = self._resolve_dest_key(dest, mem)
-            mem[dest] = result
+            self._target_mem(dest, mem)[dest] = result
 
         # ── control flow ──────────────────────────────────────────────────
         elif op == "label":
@@ -265,40 +269,53 @@ class TACInterpreter:
             # Parse format specifiers to match each arg to its expected type
             specs = self._spec_re.findall(fmt)
             for i, arg in enumerate(raw_args):
+                # Resolve variable indices in destination key (e.g. "A[i]" → "A[3]")
+                dest = self._resolve_dest_key(arg, mem) if "[" in arg else arg
+                # Determine target memory: use global if the base var is global
+                base_name = dest.split("[")[0].split(".")[0]
+                target_mem = mem
+                if base_name not in mem and base_name in self.global_memory:
+                    target_mem = self.global_memory
+                elif "[" in dest:
+                    # For array flat keys, check if any existing key for this
+                    # base lives in global memory (e.g. "arr[0]" already there)
+                    if base_name not in mem and any(
+                        k.startswith(base_name + "[") for k in self.global_memory
+                    ):
+                        target_mem = self.global_memory
                 spec = specs[i] if i < len(specs) else specs[0] if specs else "#d"
                 kind = spec[-1]  # d, f, c, s, b
                 if self._stdin:
                     raw = self._stdin.pop(0)
                     try:
                         if kind == "s":
-                            mem[arg] = raw           # wall: store as string
+                            target_mem[dest] = raw
                         elif kind == "c":
-                            mem[arg] = raw[0] if raw else '\0'  # brick: single char
+                            target_mem[dest] = raw[0] if raw else '\0'
                         elif kind == "f":
-                            mem[arg] = float(raw)    # glass: float
+                            target_mem[dest] = float(raw)
                         elif kind == "b":
-                            mem[arg] = raw.strip().lower() in ("solid", "true", "1")
+                            target_mem[dest] = raw.strip().lower() in ("solid", "true", "1")
                         else:
-                            mem[arg] = int(raw)      # tile: integer (default)
+                            target_mem[dest] = int(raw)
                     except (ValueError, TypeError, IndexError):
                         if kind == "s":
-                            mem[arg] = ""
+                            target_mem[dest] = ""
                         elif kind == "f":
-                            mem[arg] = 0.0
+                            target_mem[dest] = 0.0
                         elif kind == "c":
-                            mem[arg] = '\0'
+                            target_mem[dest] = '\0'
                         else:
-                            mem[arg] = 0
+                            target_mem[dest] = 0
                 else:
-                    # No more stdin — use type-appropriate default
                     if kind == "s":
-                        mem[arg] = ""
+                        target_mem[dest] = ""
                     elif kind == "f":
-                        mem[arg] = 0.0
+                        target_mem[dest] = 0.0
                     elif kind == "c":
-                        mem[arg] = '\0'
+                        target_mem[dest] = '\0'
                     else:
-                        mem[arg] = 0
+                        target_mem[dest] = 0
 
         # ── return ────────────────────────────────────────────────────────
         elif op == "return":
@@ -433,6 +450,33 @@ class TACInterpreter:
             resolved.append(str(int(idx)) if isinstance(idx, (int, float)) else str(idx))
         return base + "".join(f"[{r}]" for r in resolved)
 
+    def _target_mem(self, dest: str, mem: Dict[str, Any]) -> Dict[str, Any]:
+        """Return the correct memory dict (local or global) for a destination key.
+
+        For subscript keys like "arr[0]" or member keys like "s.x", check if
+        the base variable lives in global memory.  Temporaries (t1, t2, ...)
+        always go to local memory.
+        """
+        if mem is self.global_memory:
+            return mem
+        # Temporaries always stay local
+        if dest.startswith("t") and dest[1:].isdigit():
+            return mem
+        # Extract base variable name
+        base = dest.split("[")[0].split(".")[0]
+        # If base exists in local memory, store locally
+        if base in mem:
+            return mem
+        # If base or any flat key for it exists in global memory, store globally
+        if base in self.global_memory:
+            return self.global_memory
+        if "[" in dest or "." in dest:
+            prefix = base + "[" if "[" in dest else base + "."
+            for k in self.global_memory:
+                if k.startswith(prefix):
+                    return self.global_memory
+        return mem
+
     def _resolve_complex(self, src: str, mem: Dict[str, Any]) -> Any:
         """Resolve array subscript or struct member access strings.
 
@@ -443,14 +487,18 @@ class TACInterpreter:
         """
         # Struct access: name.member
         if "." in src and "[" not in src:
+            # First try: flat key "s.field" in local then global memory
+            if src in mem:
+                return mem[src]
+            if mem is not self.global_memory and src in self.global_memory:
+                return self.global_memory[src]
+            # Second try: base is a dict object
             parts = src.split(".", 1)
-            struct_val = self._resolve(parts[0], mem)
-            if isinstance(struct_val, dict):
-                return struct_val.get(parts[1], 0)
-            # Fall back to flat key "s.field"
-            key = src
-            if key in mem:
-                return mem[key]
+            base_val = mem.get(parts[0])
+            if base_val is None and mem is not self.global_memory:
+                base_val = self.global_memory.get(parts[0])
+            if isinstance(base_val, dict):
+                return base_val.get(parts[1], 0)
             return 0
 
         # Array access: name[idx] or name[i][j]
@@ -476,6 +524,14 @@ class TACInterpreter:
 
             # Second try: base is an actual list/dict object in memory
             base_val = self._resolve(base_name, mem)
+
+            # Wall character indexing: wall[i] → ord of character at index
+            if isinstance(base_val, str):
+                idx = int(resolved_indices[0])
+                if 0 <= idx < len(base_val):
+                    return ord(base_val[idx])
+                return 0
+
             if isinstance(base_val, (list, dict)):
                 for idx in resolved_indices:
                     try:
@@ -494,6 +550,48 @@ class TACInterpreter:
         # Plain name
         return self._resolve(src, mem)
 
+    # ── implicit type conversion ─────────────────────────────────────────────
+
+    def _coerce_to_type(self, value: Any, target_type: str) -> Any:
+        """Coerce a runtime value to the given arCh target type.
+
+        Conversion rules (matching C semantics):
+          tile  (int)   — truncate float, bool→0/1, char code as-is
+          glass (float) — widen int to float, bool→0.0/1.0
+          brick (char)  — wrap value modulo 128 into ASCII range
+          beam  (bool)  — non-zero → True (solid), zero → False (fragile)
+        """
+        try:
+            if target_type == "tile":
+                if isinstance(value, bool):
+                    return 1 if value else 0
+                if isinstance(value, float):
+                    return math.trunc(value)
+                if isinstance(value, int):
+                    return value
+                return int(value)
+            if target_type == "glass":
+                if isinstance(value, bool):
+                    return 1.0 if value else 0.0
+                if isinstance(value, (int, float)):
+                    return float(value)
+                return float(value)
+            if target_type == "brick":
+                if isinstance(value, bool):
+                    v = 1 if value else 0
+                else:
+                    v = math.trunc(value) if isinstance(value, float) else int(value)
+                return v % 128
+            if target_type == "beam":
+                if isinstance(value, bool):
+                    return value
+                if isinstance(value, (int, float)):
+                    return value != 0
+                return bool(value)
+        except (TypeError, ValueError):
+            pass
+        return value
+
     # ── arithmetic and logic ──────────────────────────────────────────────────
 
     def _apply_binop(self, operator: str, left: Any, right: Any) -> Any:
@@ -505,6 +603,12 @@ class TACInterpreter:
           - Comparison operators return Python bool (beam).
         """
         try:
+            # Coerce booleans to numbers for arithmetic and comparison
+            # (Python: True==1 works but True is 1 → False; arCh: solid=1, fragile=0)
+            if isinstance(left, bool):
+                left = 1 if left else 0
+            if isinstance(right, bool):
+                right = 1 if right else 0
             if operator == "+":
                 # String concatenation if either operand is a str
                 if isinstance(left, str) or isinstance(right, str):
