@@ -262,8 +262,15 @@ class TACInterpreter:
             self.output.append(line)
 
         elif op == "write":
+            # ── write() handler ──────────────────────────────────────────────
             # Consume one value from the stdin queue per argument.
             # If the queue is exhausted, fall back to defaults.
+            #
+            # Spec K.2 §13 / F.9 — brick array with #s:
+            #   When #s is used with a bare brick array name (e.g. write("#s", chars)),
+            #   the runtime reads a wall (string) input and stores each character
+            #   as ord(char) into sequential flat keys: chars[0], chars[1], ...
+            #   This enables mutable character arrays for string manipulation.
             raw_args = instr.get("args", [])
             fmt = instr.get("fmt", "")
             # Parse format specifiers to match each arg to its expected type
@@ -283,12 +290,40 @@ class TACInterpreter:
                         k.startswith(base_name + "[") for k in self.global_memory
                     ):
                         target_mem = self.global_memory
+                # Also check for bare array name (no subscript) that has flat
+                # keys in memory — needed for brick[] #s detection below.
+                elif "[" not in dest:
+                    if any(k.startswith(dest + "[") for k in self.global_memory):
+                        target_mem = self.global_memory
+                    elif any(k.startswith(dest + "[") for k in mem):
+                        pass  # target_mem stays as local mem
+
                 spec = specs[i] if i < len(specs) else specs[0] if specs else "#d"
                 kind = spec[-1]  # d, f, c, s, b
+
+                # ── Spec K.2 §13 / F.9: brick array with #s ──────────────────
+                # Detect: kind is 's' AND dest is a bare name (no subscript)
+                # AND flat keys like dest[0] exist in memory → brick array input.
+                # Store each character of the input string as ord(char) into
+                # sequential flat keys: dest[0], dest[1], ...
+                is_brick_array_s = False
+                if kind == "s" and "[" not in dest:
+                    # Check if flat keys for this array exist in target memory
+                    first_key = f"{dest}[0]"
+                    if first_key in target_mem:
+                        is_brick_array_s = True
+                    elif target_mem is not self.global_memory and first_key in self.global_memory:
+                        target_mem = self.global_memory
+                        is_brick_array_s = True
+
                 if self._stdin:
                     raw = self._stdin.pop(0)
                     try:
-                        if kind == "s":
+                        if is_brick_array_s:
+                            # Spec K.2 §13: store string char-by-char into brick array
+                            for ci, ch in enumerate(raw):
+                                target_mem[f"{dest}[{ci}]"] = ord(ch)
+                        elif kind == "s":
                             target_mem[dest] = raw
                         elif kind == "c":
                             target_mem[dest] = raw[0] if raw else '\0'
@@ -308,7 +343,9 @@ class TACInterpreter:
                         else:
                             target_mem[dest] = 0
                 else:
-                    if kind == "s":
+                    if is_brick_array_s:
+                        pass  # no input — leave array at defaults
+                    elif kind == "s":
                         target_mem[dest] = ""
                     elif kind == "f":
                         target_mem[dest] = 0.0
