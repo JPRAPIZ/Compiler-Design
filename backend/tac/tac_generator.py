@@ -714,7 +714,65 @@ class TACGenerator:
         """Emit one binop instruction and return the result temporary.
 
         t_N = left_operand  operator  right_operand
+
+        Special handling for short-circuit logical operators (Spec N.1):
+          ||  — if the left operand is truthy, skip evaluating the right operand
+                and set the result to True immediately.  This prevents side effects
+                in the right operand (e.g. arr[index] when index is out of range).
+          &&  — if the left operand is falsy, skip evaluating the right operand
+                and set the result to False immediately.
+
+        This matches C's short-circuit evaluation semantics and is critical for
+        patterns like:  if (index < 0 || arr[index] <= value)
+        where arr[index] must NOT be evaluated when index is negative.
         """
+        op = node.operator
+
+        # ── Short-circuit || ────────────────────────────────────────────────
+        if op == "||":
+            left_op = self._gen_expr(node.left)
+            result_tmp = self._new_temp()
+            l_short = self._new_label()   # jump here if left is true
+            l_end   = self._new_label()   # end of || expression
+
+            # If left is truthy → result is True, skip right side
+            self._emit({"op": "jump_if", "cond": left_op, "target": l_short})
+
+            # Left was falsy → evaluate right side, result = right
+            right_op = self._gen_expr(node.right)
+            self._emit({"op": "assign", "dest": result_tmp, "src": right_op})
+            self._emit({"op": "jump", "target": l_end})
+
+            # Short-circuit path: result = True
+            self._emit({"op": "label", "name": l_short})
+            self._emit({"op": "assign", "dest": result_tmp, "src": "True"})
+
+            self._emit({"op": "label", "name": l_end})
+            return result_tmp
+
+        # ── Short-circuit && ────────────────────────────────────────────────
+        if op == "&&":
+            left_op = self._gen_expr(node.left)
+            result_tmp = self._new_temp()
+            l_short = self._new_label()   # jump here if left is false
+            l_end   = self._new_label()   # end of && expression
+
+            # If left is falsy → result is False, skip right side
+            self._emit({"op": "jump_if_false", "cond": left_op, "target": l_short})
+
+            # Left was truthy → evaluate right side, result = right
+            right_op = self._gen_expr(node.right)
+            self._emit({"op": "assign", "dest": result_tmp, "src": right_op})
+            self._emit({"op": "jump", "target": l_end})
+
+            # Short-circuit path: result = False
+            self._emit({"op": "label", "name": l_short})
+            self._emit({"op": "assign", "dest": result_tmp, "src": "False"})
+
+            self._emit({"op": "label", "name": l_end})
+            return result_tmp
+
+        # ── All other binary operators: eager evaluation ────────────────────
         left_op = self._gen_expr(node.left)
         right_op = self._gen_expr(node.right)
         tmp = self._new_temp()
@@ -722,7 +780,7 @@ class TACGenerator:
             "op": "binop",
             "dest": tmp,
             "left": left_op,
-            "operator": node.operator,
+            "operator": op,
             "right": right_op,
         })
         return tmp
