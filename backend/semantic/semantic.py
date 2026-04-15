@@ -723,6 +723,13 @@ class SemanticAnalyzer:
           - write() must have at least one format specifier (§2).
           - Format specifiers must be compatible with argument types (§3, §4).
           - write() arguments are marked initialized (they are filled by input).
+
+        Special case — Spec K.2 §13 / F.9:
+          A brick array is a valid argument for the #s format specifier in a
+          write statement.  The array name already represents the address, so
+          the address-of operator (&) is not needed.  At runtime the input
+          string is stored character-by-character into the brick array elements
+          (e.g. chars[0]='H', chars[1]='e', …).
         """
         fmt = node.format_string or ""
         # Strip surrounding quotes from the format string for specifier scanning
@@ -741,8 +748,11 @@ class SemanticAnalyzer:
                     node.line, node.col
                 )
 
-            # write() fills its arguments — mark them initialized, then type-check
+            # write() fills its arguments — mark them initialized, then type-check.
+            # For each argument we also record whether it is a brick array, since
+            # brick arrays have a special exemption for #s (Spec K.2 §13).
             arg_types = []
+            arg_is_brick_array = []   # parallel list: True when arg is brick[]
             for arg in node.args:
                 if isinstance(arg, IdNode):
                     sym = self.symbol_table.lookup(arg.name)
@@ -750,17 +760,31 @@ class SemanticAnalyzer:
                         sym.initialized = True
                         arg.expr_type = sym.type
                         arg_types.append(sym.type)
+                        # Spec K.2 §13 / F.9: a bare brick array name used as
+                        # a write() argument is eligible for #s input.
+                        arg_is_brick_array.append(
+                            sym.type == 'brick' and sym.is_array
+                        )
                     else:
                         self._analyze_expr(arg)
                         arg_types.append(None)
+                        arg_is_brick_array.append(False)
                 else:
                     t = self._analyze_expr(arg)
                     arg_types.append(t)
+                    arg_is_brick_array.append(False)
 
             # Spec K.2 §4: check specifier/type compatibility
             for i, (spec, arg_type) in enumerate(zip(specs, arg_types)):
                 if arg_type is None:
                     continue
+
+                # Spec K.2 §13 / F.9 exemption: #s with a brick array argument
+                # is valid.  The runtime will read a wall (string) and store each
+                # character into sequential brick array elements as ord(char).
+                if spec in ('#s', '%s') and i < len(arg_is_brick_array) and arg_is_brick_array[i]:
+                    continue   # allowed — skip the normal type check
+
                 allowed = self._FMT_SPEC_TYPES.get(spec)
                 if allowed and arg_type not in allowed:
                     self._error(
