@@ -175,7 +175,19 @@ function createInterpreter(instructions, onOutput, onInput) {
   }
 
   // ── arithmetic ────────────────────────────────────────────────────────────
-  function applyBinop(op, l, r) {
+  // The optional `resultType` parameter carries the arCh expression type
+  // from the semantic analyzer (e.g. "tile", "glass").  It is attached to
+  // division and modulo TAC instructions by the TAC generator so the JS
+  // runtime can distinguish tile division (truncates) from glass division
+  // (preserves fractional part).
+  //
+  // WHY THIS IS NEEDED (JS-specific problem):
+  //   In JavaScript, 5.0 === 5 and Number.isInteger(5.0) === true.
+  //   When a user types "5.00" via write("#f"), parseFloat("5.00") gives 5
+  //   — a JS integer.  Without the type annotation, 5 / 2 would be treated
+  //   as tile/tile division and truncated to 2 instead of 2.5.
+  //   Python does NOT have this problem: float("5.00") → 5.0 stays float.
+  function applyBinop(op, l, r, resultType) {
     try {
       // Coerce booleans to numbers for arithmetic and comparison
       // (arCh: solid=1, fragile=0 in all numeric contexts)
@@ -192,6 +204,13 @@ function createInterpreter(instructions, onOutput, onInput) {
           runtimeErrors.push("Runtime error: division by zero");
           return 0;
         }
+        // Use result_type from the semantic analyzer to decide truncation.
+        // This is the authoritative source — it knows whether the expression
+        // is glass (float) or tile (int) based on the arCh type hierarchy.
+        if (resultType === "glass") return l / r;
+        if (resultType === "tile" || resultType === "brick" || resultType === "beam")
+          return Math.trunc(l / r);
+        // Fallback when no annotation (legacy instructions): use JS check
         return Number.isInteger(l) && Number.isInteger(r)
           ? Math.trunc(l / r)
           : l / r;
@@ -201,6 +220,10 @@ function createInterpreter(instructions, onOutput, onInput) {
           runtimeErrors.push("Runtime error: modulo by zero");
           return 0;
         }
+        // Same type-aware logic for modulo
+        if (resultType === "glass") return l % r;
+        if (resultType === "tile" || resultType === "brick" || resultType === "beam")
+          return Math.trunc(l % r);
         return l % r;
       }
       if (op === "<") return l < r;
@@ -381,7 +404,7 @@ function createInterpreter(instructions, onOutput, onInput) {
       const r = resolve(instr.right, mem);
       let bDest = instr.dest;
       if (bDest.includes("[")) bDest = resolveDestKey(bDest, mem);
-      targetMem(bDest, mem)[bDest] = applyBinop(instr.operator, l, r);
+      targetMem(bDest, mem)[bDest] = applyBinop(instr.operator, l, r, instr.result_type);
     } else if (op === "unary") {
       let uDest = instr.dest;
       if (uDest.includes("[")) uDest = resolveDestKey(uDest, mem);
@@ -857,15 +880,28 @@ function App() {
   };
 
   const handleDownload = () => {
+    // Prompt the user for a filename so the displayed name updates
+    // immediately in the Source Code panel header.  The browser download
+    // dialog may rename again, but the state reflects the user's intent.
+    const suggested = fileName === "untitled.arCh" ? "untitled.arCh" : fileName;
+    const chosen = window.prompt("Save file as:", suggested);
+    if (!chosen) return; // user cancelled
+
+    // Ensure .arCh extension
+    const finalName = chosen.endsWith(".arCh") ? chosen : chosen + ".arCh";
+
     const blob = new Blob([code], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = fileName;
+    a.download = finalName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+
+    // Update the displayed filename immediately
+    setFileName(finalName);
     savedCodeRef.current = code;
     setIsDirty(false);
   };
