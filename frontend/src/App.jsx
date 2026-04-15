@@ -256,6 +256,28 @@ function createInterpreter(instructions, onOutput, onInput) {
     return Boolean(v);
   }
 
+  // ── global memory routing (mirrors Python _target_mem) ────────────────────
+  // When a function writes to a global variable (e.g. roof tile arr[100]),
+  // the destination key must be stored in globalMem, not the local scope.
+  // Temporaries (t1, t2, ...) always stay in local memory.
+  function targetMem(dest, mem) {
+    if (mem === globalMem) return mem;
+    // Temporaries always stay local
+    if (/^t\d+$/.test(dest)) return mem;
+    const base = dest.split("[")[0].split(".")[0];
+    // If base exists in local memory, store locally
+    if (base in mem) return mem;
+    // If base or any flat key exists in global memory, store globally
+    if (base in globalMem) return globalMem;
+    if (dest.includes("[") || dest.includes(".")) {
+      const prefix = dest.includes("[") ? base + "[" : base + ".";
+      for (const k of Object.keys(globalMem)) {
+        if (k.startsWith(prefix)) return globalMem;
+      }
+    }
+    return mem;
+  }
+
   // ── format helpers ────────────────────────────────────────────────────────
   // arCh uses # exclusively — % is not a valid format prefix
   // Supports: #d, #f, #c, #s, #b, and #.Nf (precision, e.g. #.2f)
@@ -353,17 +375,17 @@ function createInterpreter(instructions, onOutput, onInput) {
       if (dest.includes("[")) dest = resolveDestKey(dest, mem);
       let val = resolve(instr.src, mem);
       if (instr.dest_type) val = coerceToType(val, instr.dest_type);
-      mem[dest] = val;
+      targetMem(dest, mem)[dest] = val;
     } else if (op === "binop") {
       const l = resolve(instr.left, mem);
       const r = resolve(instr.right, mem);
       let bDest = instr.dest;
       if (bDest.includes("[")) bDest = resolveDestKey(bDest, mem);
-      mem[bDest] = applyBinop(instr.operator, l, r);
+      targetMem(bDest, mem)[bDest] = applyBinop(instr.operator, l, r);
     } else if (op === "unary") {
       let uDest = instr.dest;
       if (uDest.includes("[")) uDest = resolveDestKey(uDest, mem);
-      mem[uDest] = applyUnary(instr.operator, resolve(instr.operand, mem));
+      targetMem(uDest, mem)[uDest] = applyUnary(instr.operator, resolve(instr.operand, mem));
     } else if (op === "label" || op === "func_begin" || op === "func_end") {
       if (op === "func_end" && callStack.length) {
         const rec = callStack.pop();
@@ -405,6 +427,11 @@ function createInterpreter(instructions, onOutput, onInput) {
     } else if (op === "write") {
       // PAUSE here — ask the user for input, wait for their response.
       // Yield an object so the UI knows the expected type for validation.
+      //
+      // Spec K.2 §13 / F.9 — brick array with #s:
+      //   When #s is used with a bare brick array name, the runtime reads a
+      //   wall (string) input and stores each character as its char code into
+      //   sequential flat keys: chars[0], chars[1], chars[2], ...
       const args = instr.args || [];
       const fmt = instr.fmt || "";
       let cleanFmt = fmt;
@@ -419,19 +446,58 @@ function createInterpreter(instructions, onOutput, onInput) {
         const spec = specs[i] ?? specs[0] ?? "#d";
         const kind = spec[spec.length - 1];
 
+        // ── Spec K.2 §13 / F.9: detect brick array with #s ──────────────
+        // If kind is 's' and dest is a bare name (no subscript) and flat keys
+        // like dest[0] exist in memory, this is a brick array string input.
+        let isBrickArrayS = false;
+        let brickTargetMem = mem;   // where the brick array flat keys live
+        if (kind === "s" && !dest.includes("[")) {
+          const firstKey = `${dest}[0]`;
+          if (firstKey in mem) {
+            isBrickArrayS = true;
+          } else if (mem !== globalMem && firstKey in globalMem) {
+            isBrickArrayS = true;
+            brickTargetMem = globalMem;
+          }
+        }
+
         // Suspend — UI will resume us with the raw string the user typed
         const raw = yield { signal: "INPUT", varName: dest, spec };
 
-        // Convert (validation already done in handleSubmitInput before resume)
-        let val;
-        if (kind === "d") val = Math.trunc(Number(raw));
-        else if (kind === "f") val = parseFloat(raw);
-        else if (kind === "b")
-          val = raw === "solid" || raw === "1" || raw === "true";
-        else if (kind === "c") val = String(raw)[0] ?? "";
-        else val = String(raw);
+        if (isBrickArrayS) {
+          // Spec K.2 §13: store string char-by-char into brick array
+          const str = String(raw);
+          for (let ci = 0; ci < str.length; ci++) {
+            brickTargetMem[`${dest}[${ci}]`] = str.charCodeAt(ci);
+          }
+        } else {
+          // Standard conversion per format specifier type
+          let val;
+          if (kind === "d") val = Math.trunc(Number(raw));
+          else if (kind === "f") val = parseFloat(raw);
+          else if (kind === "b")
+            val = raw === "solid" || raw === "1" || raw === "true";
+          else if (kind === "c") val = String(raw)[0] ?? "";
+          else val = String(raw);
 
-        mem[dest] = val;
+          // Route to the correct memory (local vs global).
+          // If the base variable lives in global memory (e.g. a roof array),
+          // store the value there instead of in local scope.
+          const baseName = dest.split("[")[0].split(".")[0];
+          let writeMem = mem;
+          if (mem !== globalMem) {
+            if (!(baseName in mem) && baseName in globalMem) {
+              writeMem = globalMem;
+            } else if (dest.includes("[") && !(baseName in mem)) {
+              // Check if any flat key for this array base lives in globalMem
+              const prefix = baseName + "[";
+              for (const k of Object.keys(globalMem)) {
+                if (k.startsWith(prefix)) { writeMem = globalMem; break; }
+              }
+            }
+          }
+          writeMem[dest] = val;
+        }
       }
     } else if (op === "return") {
       const retVal =
