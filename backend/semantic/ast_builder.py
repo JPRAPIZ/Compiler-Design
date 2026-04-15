@@ -584,11 +584,19 @@ class ASTBuilder:
         if dtype == "wall":
             init_val = self._global_wall_init_expr()
         elif dtype == "house":
-            # Skip struct const initialiser — not representable here
-            self._eat("id")  # variable name
+            # Spec C / E / G: roof cement house <StructName> <varName> = { values };
+            #
+            # _data_type_str() already consumed "house" and the first _eat("id")
+            # above consumed the struct TYPE name into `name`.  We need to:
+            #   1. Save the struct type name from `name`.
+            #   2. Eat the real variable name.
+            #   3. Parse the brace initializer = { ... }.
+            struct_type_name = name          # e.g. "Point"
+            var_tok = self._eat("id")        # eat the real variable name
+            name = var_tok.lexeme if var_tok else ""
+            dtype = f"house {struct_type_name}"   # "house Point"
             if self._is("="):
-                self._skip_brace_init()
-            init_val = None
+                init_val = self._parse_brace_init()
         else:
             if self._is("="):
                 self._eat("=")
@@ -977,9 +985,20 @@ class ASTBuilder:
                 dims, arr_init = self._array_dec_dims()
                 init_val = arr_init
         elif dtype == "house":
-            self._eat("id")
+            # Spec E / G: cement house <StructName> <varName> = { values };
+            #
+            # At this point _data_type_str() already consumed "house" and
+            # the first _eat("id") on line above consumed the struct TYPE
+            # name (e.g. "Point") into `name`.  We need to:
+            #   1. Save the struct type name from `name`.
+            #   2. Eat the real variable name (e.g. "center").
+            #   3. Parse the brace initializer = { ... }.
+            struct_type_name = name          # "Point"
+            var_tok = self._eat("id")        # eat "center"
+            name = var_tok.lexeme if var_tok else ""
+            dtype = f"house {struct_type_name}"   # "house Point"
             if self._is("="):
-                self._skip_brace_init()
+                init_val = self._parse_brace_init()
         else:
             if self._is("="):
                 self._eat("=")
