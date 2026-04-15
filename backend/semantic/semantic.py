@@ -436,7 +436,19 @@ class SemanticAnalyzer:
 
         Used for both global and local variable/constant declarations.
         The 'initialized' flag on the Symbol is set to True only when
-        an init_value expression is present.
+        an init_value expression is present, with two exceptions:
+
+        Spec F.9/F.11 — Arrays with a fixed size receive default values
+        automatically (tile=0, glass=0.0, wall="", brick=\\0, beam=fragile).
+        They are always considered initialized even without an explicit
+        brace initializer.
+
+        Spec G.11 — Structure variables are implicitly initialized when
+        declared.  Each member receives the default value for its type
+        (tile=0, glass=0.0, etc.) so that member accesses like s1.x are
+        valid even without an explicit = {...} initializer.  This matches
+        the C behaviour where struct variables have indeterminate but
+        accessible storage, and arCh always default-initializes.
         """
         # Determine initial initialization state
         has_init = decl.init_value is not None
@@ -454,6 +466,14 @@ class SemanticAnalyzer:
         if isinstance(base_type, str) and base_type.startswith("house "):
             struct_name = base_type[6:].strip()
             base_type = "house"
+
+        # Spec G.11: Structure variables are implicitly initialized.
+        # A declaration like `house Student s1;` creates s1 with all members
+        # set to their type defaults.  The variable is therefore immediately
+        # usable — accessing s1.scores[0] or s1.name is valid without an
+        # explicit = {...} initializer.
+        if base_type == "house":
+            has_init = True
 
         sym = Symbol(
             name=decl.name,
@@ -1200,7 +1220,17 @@ class SemanticAnalyzer:
         return None
 
     def _check_not_const(self, target: ExprNode, line: int, col: int):
-        """Emit an error if the assignment target is a declared constant."""
+        """Emit an error if the assignment target is a declared constant.
+
+        Spec E.8: cement (const) variables cannot be modified after
+        initialization.  This rule applies to the variable itself AND to
+        individual array elements or struct members of a cement variable:
+          - cement tile nums[3] = {1,2,3};  nums[0] = 99;    ← error
+          - cement house Pt p = {3,7};      p.x = 10;        ← error
+
+        The check recurses through ArrayAccessNode and StructAccessNode to
+        find the base IdNode and verify its const status.
+        """
         if isinstance(target, IdNode):
             sym = self.symbol_table.lookup(target.name)
             if sym and sym.is_const:
@@ -1208,6 +1238,15 @@ class SemanticAnalyzer:
                     f"Cannot assign to constant '{target.name}'",
                     line, col
                 )
+        elif isinstance(target, ArrayAccessNode):
+            # Spec E.8: assigning to an element of a cement array (e.g.
+            # nums[0] = 99) is forbidden.  Recurse into the base expression
+            # to find the underlying identifier.
+            self._check_not_const(target.array, line, col)
+        elif isinstance(target, StructAccessNode):
+            # Spec E.8: assigning to a member of a cement struct variable
+            # (e.g. p.x = 10) is forbidden.  Recurse into the struct base.
+            self._check_not_const(target.struct, line, col)
 
     def _mark_initialized(self, target: ExprNode):
         """Mark the target variable as initialized after an assignment.
