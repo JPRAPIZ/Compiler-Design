@@ -333,12 +333,11 @@ class Lexer:
         )
 
     def is_delim12(self, ch) -> bool:
-        # delim12 { alpha , numbers , - , { , ' , " , whitespace }
+        # delim12 { alpha_num , + , - , ! , { , ( , / , ' , " , whitespace }
         return (
             self.is_eof(ch)
-            or (ch is not None and ch.isalpha())  # alpha
-            or self.is_number(ch)                 # numbers
-            or ch in ('-', '{', "'", '"')
+            or self.is_alpha_num(ch)
+            or ch in ('+', '-', '!', '{', '(', '/', "'", '"')
             or self.is_whitespace(ch)
         )
 
@@ -381,7 +380,7 @@ class Lexer:
         )
 
     def is_delim17(self, ch) -> bool:
-        # delim17 { operators , ) , ] , [ , . , , , ; , whitespace }
+        # delim17 { operators , ) , [ , ] , , , ; , whitespace }
         # After ']': comma for arg/element lists,
         # [ for next dimension are all valid, ] for closing outer dimension.
         return (
@@ -392,7 +391,7 @@ class Lexer:
         )
 
     def is_delim18(self, ch) -> bool:
-        # delim18 { alpha_num , }, - , & , ' , " , whitespace }
+        # delim18 { alpha_num , { , + , - , & , ' , " , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
@@ -401,7 +400,7 @@ class Lexer:
         )
 
     def is_delim19(self, ch) -> bool:
-        # delim19 { alpha_num , }, + , - , whitespace }
+        # delim19 { alpha_num , } , + , - , whitespace }
         return (
             self.is_eof(ch)
             or self.is_alpha_num(ch)
@@ -437,10 +436,10 @@ class Lexer:
         )
 
     def is_delim23(self, ch) -> bool:
-        # delim23 { + , > , < , = , ! , & , | , ) , ] , } , , , ; , whitespace }
+        # delim23 { + , > , < , = , ! , & , | , } , ) , ] , , , ; , whitespace }
         return (
             self.is_eof(ch)
-            or ch in ('+', '>', '<', '=', '!', '&', '|', ')', ']', '}', ',', ';')
+            or ch in ('+', '>', '<', '=', '!', '&', '|', '}', ')', ']', ',', ';')
             or self.is_whitespace(ch)
         )
 
