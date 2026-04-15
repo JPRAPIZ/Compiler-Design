@@ -435,30 +435,43 @@ class SemanticAnalyzer:
         """Register a VarDeclNode in the current (or global) scope.
 
         Used for both global and local variable/constant declarations.
-        The 'initialized' flag on the Symbol is set to True only when
-        an init_value expression is present, with two exceptions:
 
-        Spec F.9/F.11 — Arrays with a fixed size receive default values
-        automatically (tile=0, glass=0.0, wall="", brick=\\0, beam=fragile).
-        They are always considered initialized even without an explicit
-        brace initializer.
+        INITIALIZATION RULES — arCh default values
+        ───────────────────────────────────────────
+        In arCh, every declared variable receives a default value for its type
+        at the point of declaration — there are no "indeterminate" values as in
+        C.  The TAC generator (Phase 5) emits explicit default-init instructions
+        (e.g.  n = 0  for tile,  g = 0.0  for glass) for every declaration that
+        lacks an explicit initialiser.
 
-        Spec G.11 — Structure variables are implicitly initialized when
-        declared.  Each member receives the default value for its type
-        (tile=0, glass=0.0, etc.) so that member accesses like s1.x are
-        valid even without an explicit = {...} initializer.  This matches
-        the C behaviour where struct variables have indeterminate but
-        accessible storage, and arCh always default-initializes.
+        Therefore ALL non-constant variables are marked initialized=True:
+
+          Spec D.5 / K.1 §5 — Variables may be declared without an explicit
+            initializer; they receive their type's default value.
+            tile=0, glass=0.0, wall="", brick=\\0, beam=fragile
+
+          Spec F.9 / F.11 — Arrays with a fixed size receive per-element
+            default values automatically.
+
+          Spec G.11 — Structure variables have their members default-initialized
+            to the member type's default value.
+
+        The only items that truly REQUIRE an explicit initializer are cement
+        (const) variables — enforced separately in _analyze_var_decl (Spec E.2).
         """
-        # Determine initial initialization state
-        has_init = decl.init_value is not None
+        # ── Determine initialization state ────────────────────────────────
+        # All non-const variables are considered initialized because arCh
+        # default-initializes every declaration.  The TAC generator confirms
+        # this by emitting  name = <default>  for every uninitialised decl.
+        # Cement (const) without init will be caught by _analyze_var_decl
+        # before we get here; if we do reach here, has_init reflects reality.
+        has_init = True  # arCh always default-initialises
 
-        # Spec F.9/F.11: Arrays declared with a fixed size get default values
-        # automatically (tile=0, glass=0.0, wall="", brick=\0, beam=fragile).
-        # They are always considered initialized even without an explicit
-        # brace initializer.
-        if decl.is_array:
-            has_init = True
+        # The only case where we respect the AST's init_value is for
+        # cement variables: if init_value is None AND is_const, the semantic
+        # check in _analyze_var_decl already emitted an error, but we still
+        # set initialized=True so we don't cascade additional "used before
+        # being initialized" noise for the same symbol.
 
         # Parse struct_name for house-typed variables
         struct_name = decl.struct_type_name
@@ -466,14 +479,6 @@ class SemanticAnalyzer:
         if isinstance(base_type, str) and base_type.startswith("house "):
             struct_name = base_type[6:].strip()
             base_type = "house"
-
-        # Spec G.11: Structure variables are implicitly initialized.
-        # A declaration like `house Student s1;` creates s1 with all members
-        # set to their type defaults.  The variable is therefore immediately
-        # usable — accessing s1.scores[0] or s1.name is valid without an
-        # explicit = {...} initializer.
-        if base_type == "house":
-            has_init = True
 
         sym = Symbol(
             name=decl.name,
