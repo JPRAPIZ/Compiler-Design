@@ -776,13 +776,29 @@ class TACGenerator:
         left_op = self._gen_expr(node.left)
         right_op = self._gen_expr(node.right)
         tmp = self._new_temp()
-        self._emit({
+        instr = {
             "op": "binop",
             "dest": tmp,
             "left": left_op,
             "operator": op,
             "right": right_op,
-        })
+        }
+        # For division and modulo, annotate the result type from the semantic
+        # analyzer so the runtime can distinguish tile/tile division (truncates)
+        # from glass division (preserves fractional part).
+        #
+        # This is critical for the JS frontend interpreter where JavaScript
+        # does not distinguish int and float (5.0 === 5).  Without this
+        # annotation, glass 5.0 / glass 2.0 would be treated as integer
+        # division because Number.isInteger(5) is true in JS.
+        #
+        # The Python runtime does not need this because Python's isinstance()
+        # correctly distinguishes int from float.
+        if op in ("/", "%"):
+            expr_type = getattr(node, "expr_type", None)
+            if expr_type:
+                instr["result_type"] = expr_type
+        self._emit(instr)
         return tmp
 
     def _gen_unary(self, node: UnaryOpNode) -> str:
