@@ -556,8 +556,18 @@ class ASTBuilder:
     def _global_const(self) -> Optional[VarDeclNode]:
         """Parse a 'cement' (const) declaration at global scope.
 
-        cement type id [= literal] [, id [= literal]] ...
-        Returns a VarDeclNode with is_const=True.
+        Spec C — Global Declaration (constant arrays):
+          The global declaration syntax explicitly supports:
+            roof cement <type> <id>[<size>] = { <values> };
+            roof cement <type> <id>[<size1>][<size2>] = { {<row>}, ... };
+
+        Spec E — Constant Variables:
+          - Rule E.2: cement must always be initialized.
+          - Rule E.11: cement arrays must be initialized with values.
+
+        Returns a VarDeclNode with is_const=True.  For arrays, is_array=True
+        and array_dims/init_value are populated from _array_dec_dims().
+
         Only the FIRST name in a comma list is returned; subsequent names are
         consumed but discarded.  (TODO: return a list like local const decl.)
         """
@@ -566,6 +576,10 @@ class ASTBuilder:
         dtype = self._data_type_str()
         name_tok = self._eat("id")
         name = name_tok.lexeme if name_tok else ""
+
+        init_val = None
+        is_array = False
+        dims = None
 
         if dtype == "wall":
             init_val = self._global_wall_init_expr()
@@ -580,8 +594,11 @@ class ASTBuilder:
                 self._eat("=")
                 init_val = self._value_literal()
             elif self._is("["):
-                self._array_dec_dims()  # unpack: (dims, init)
-                init_val = None
+                # Spec E.11: cement arrays — parse [size] and = {...}.
+                # _array_dec_dims() returns (dims_list, ArrayInitNode_or_None).
+                is_array = True
+                dims, arr_init = self._array_dec_dims()
+                init_val = arr_init
             else:
                 init_val = None
 
@@ -594,7 +611,7 @@ class ASTBuilder:
                 self._value_literal()
 
         return VarDeclNode(type=dtype, name=name, init_value=init_val,
-                           is_const=True, is_array=False, array_dims=None,
+                           is_const=True, is_array=is_array, array_dims=dims,
                            line=line, col=col)
 
     # -----------------------------------------------------------------------
@@ -920,8 +937,23 @@ class ASTBuilder:
     def _local_const_decl(self) -> List:
         """Parse a cement (const) declaration; return a LIST of VarDeclNode.
 
+        Spec E — Constant Variables:
+          - Rule E.2: cement variables MUST always be initialized at declaration.
+          - Rule E.8: cement variables cannot be modified after initialization.
+          - Rule E.11: cement arrays must be initialized with brace values.
+
+        Spec F — Arrays:
+          - Rule F.21: cement arrays with fixed size cannot have an empty
+            initializer (cement tile score[4] = {} is invalid).
+
         Each comma-separated name produces its own VarDeclNode so the semantic
         analyzer can validate each constant independently.
+
+        This method handles three shapes:
+          cement tile x = 5;                     → scalar const
+          cement tile nums[3] = {1, 2, 3};       → array const (1-D)
+          cement tile mat[2][3] = {{...},{...}};  → array const (2-D)
+          cement tile a = 1, b = 2;              → comma-separated scalars
         """
         line, col = self._line(), self._col()
         self._eat("cement")
@@ -931,12 +963,19 @@ class ASTBuilder:
         nodes: List[VarDeclNode] = []
 
         init_val = None
+        is_array = False
+        dims = None
+
         if dtype == "wall":
             if self._is("="):
                 self._eat("=")
                 init_val = self._wall_init_expr()
             elif self._is("["):
-                self._array_dec_dims()
+                # Spec E.11: cement wall arrays — parse brackets + optional init.
+                # _array_dec_dims() returns (dims_list, init_node_or_None).
+                is_array = True
+                dims, arr_init = self._array_dec_dims()
+                init_val = arr_init
         elif dtype == "house":
             self._eat("id")
             if self._is("="):
@@ -946,26 +985,35 @@ class ASTBuilder:
                 self._eat("=")
                 init_val = self._expression()
             elif self._is("["):
-                self._array_dec_dims()
+                # Spec E.11 / F.21: cement arrays — parse [size] and = {...}.
+                # _array_dec_dims() consumes the brackets and optional brace
+                # initializer, returning both the dimension list and the
+                # ArrayInitNode so we can propagate them to the VarDeclNode.
+                is_array = True
+                dims, arr_init = self._array_dec_dims()
+                init_val = arr_init
 
         nodes.append(VarDeclNode(type=dtype, name=name, init_value=init_val,
-                                 is_const=True, is_array=False, array_dims=None,
-                                 line=line, col=col))
-        # Trailing comma-separated const declarations in the same statement
-        while self._is(","):
-            self._eat(",")
-            extra_line, extra_col = self._line(), self._col()
-            extra_tok = self._eat("id")
-            extra_name = extra_tok.lexeme if extra_tok else ""
-            extra_init = None
-            if self._is("="):
-                self._eat("=")
-                extra_init = self._expression()
-            nodes.append(VarDeclNode(type=dtype, name=extra_name,
-                                     init_value=extra_init,
-                                     is_const=True, is_array=False,
-                                     array_dims=None,
-                                     line=extra_line, col=extra_col))
+                                 is_const=True, is_array=is_array,
+                                 array_dims=dims, line=line, col=col))
+
+        # Trailing comma-separated const declarations in the same statement.
+        # Only scalar consts support comma lists; arrays do not.
+        if not is_array:
+            while self._is(","):
+                self._eat(",")
+                extra_line, extra_col = self._line(), self._col()
+                extra_tok = self._eat("id")
+                extra_name = extra_tok.lexeme if extra_tok else ""
+                extra_init = None
+                if self._is("="):
+                    self._eat("=")
+                    extra_init = self._expression()
+                nodes.append(VarDeclNode(type=dtype, name=extra_name,
+                                         init_value=extra_init,
+                                         is_const=True, is_array=False,
+                                         array_dims=None,
+                                         line=extra_line, col=extra_col))
         self._eat(";")
         return nodes
 
