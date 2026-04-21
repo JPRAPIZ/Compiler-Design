@@ -333,11 +333,12 @@ class Lexer:
         )
 
     def is_delim12(self, ch) -> bool:
-        # delim12 { alpha_num , + , - , ! , { , ( , / , ' , " , whitespace }
+        # delim12 { alpha , numbers , - , { , ' , " , whitespace }
         return (
             self.is_eof(ch)
-            or self.is_alpha_num(ch)
-            or ch in ('+', '-', '!', '{', '(', '/', "'", '"')
+            or (ch is not None and ch.isalpha())  # alpha
+            or self.is_number(ch)                 # numbers
+            or ch in ('-', '{', "'", '"')
             or self.is_whitespace(ch)
         )
 
@@ -1425,7 +1426,22 @@ class Lexer:
                 continue
 
             elif state == 74:
-                if self.is_whitespace(ch):
+                # Delimiter check for 'home' (return) keyword.
+                #
+                # Spec H.9: 'home <expr>;' returns a value from a non-field function.
+                #   The expression is mandatory — 'home;' (bare return) is NOT valid
+                #   in arCh.  Field (void) functions must not have a home statement
+                #   at all (Spec H.10).
+                #
+                # Valid characters after 'home':
+                #   whitespace — 'home 0;', 'home solid;', 'home x + 1;'
+                #   (          — 'home (x + 1);' (parenthesized expression)
+                #   -          — 'home -1;' (negative literal/unary minus)
+                #   !          — 'home !flag;' (logical not expression)
+                #   '          — "home 'A';" (brick literal as return value)
+                #   "          — 'home "hello";' (wall literal as return value)
+                #   alpha_num  — goes to identifier state (e.g. 'homerun' → identifier)
+                if self.is_whitespace(ch) or ch in ('(', '-', '!', "'", '"'):
                     state = 75
                     continue
                 
@@ -2467,7 +2483,18 @@ class Lexer:
 
             # ':'
             elif state == 189:
-                if self.is_whitespace(ch):
+                # Delimiter check for ':' (colon) — used after door (case) labels.
+                #
+                # Spec K.5: 'door <value>: { statements }' or 'door <value>: statement'
+                # Spec K.5 §9: When declaring a variable inside a case, the case
+                #   body must be enclosed in curly braces { }.
+                #
+                # Valid characters after ':':
+                #   whitespace — 'door 1: { ... }' (space before brace/statement)
+                #   {          — 'door 1:{ ... }' (brace directly touching colon)
+                #   alpha      — 'door 1:view(...)' (statement directly after colon)
+                #   numbers    — unlikely but valid if a numeric expression follows
+                if self.is_whitespace(ch) or ch in ('{',) or self.is_alpha_num(ch):
                     state = 190
                     continue
                 lexeme = self.source[start_pos:self.pos]
