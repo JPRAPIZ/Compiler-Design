@@ -427,7 +427,17 @@ function createInterpreter(instructions, onOutput, onInput) {
         if (instr.target in labelMap) pc = labelMap[instr.target];
     } else if (op === "call") {
       const argVals = (instr.args || []).map((a) => resolve(a, mem));
-      if (instr.func in funcMap) {
+
+      // ── Built-in function: rand(min, max) ────────────────────────────
+      // Returns a random integer in [min, max] inclusive.
+      // Handled before user-defined function lookup so it works even
+      // though rand has no TAC body (no func_begin/func_end instructions).
+      if (instr.func === "rand") {
+        const lo = argVals.length > 0 ? Math.trunc(Number(argVals[0])) : 0;
+        const hi = argVals.length > 1 ? Math.trunc(Number(argVals[1])) : 100;
+        const result = Math.floor(Math.random() * (hi - lo + 1)) + lo;
+        if (instr.dest) mem[instr.dest] = result;
+      } else if (instr.func in funcMap) {
         const retAddr = pc;
         const fpc = funcMap[instr.func];
         const params = instructions[fpc].params || [];
