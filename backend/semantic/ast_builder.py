@@ -262,13 +262,25 @@ class ASTBuilder:
     # Each can be a variable, a constant, or a struct definition.
 
     def _global(self) -> List[GlobalDeclNode]:
-        """Consume all 'roof' declarations and return the list of nodes."""
+        """Consume all 'roof' declarations and return the list of nodes.
+
+        Spec C — Global Declaration:
+          Each 'roof' keyword introduces one global declaration that may
+          produce one or more AST nodes.  For example, a struct definition
+          with simultaneous variable declarations:
+            roof house Point { tile x; tile y; } p1, p2 = {5, 10};
+          produces [StructDeclNode, VarDeclNode(p1), VarDeclNode(p2)].
+        """
         decls = []
         while self._is("roof"):
             self._eat("roof")
             d = self._global_dec()
-            if d:
-                decls.append(d)
+            if d is not None:
+                # _structure_global returns a list; others return a single node.
+                if isinstance(d, list):
+                    decls.extend(d)
+                else:
+                    decls.append(d)
             self._eat(";")
         return decls
 
@@ -476,39 +488,103 @@ class ASTBuilder:
 
     # ── Struct global declaration ─────────────────────────────────────────────
 
-    def _structure_global(self) -> Optional[StructDeclNode]:
+    def _structure_global(self):
         """Parse a 'house' declaration at global scope.
 
-        Two forms are handled:
-          1. Struct TYPE definition:  house Name { members } [var] ;
-             → returns StructDeclNode
-          2. Struct VARIABLE instantiation: house TypeName varName [= {...}] ;
-             → returns None (ASTBuilder cannot construct VarDeclNode here
-               without knowing whether TypeName is a valid struct — that is
-               the semantic analyzer's job).
+        Spec C — Global Declaration:
+          Global struct declarations come in several forms:
+          1. Struct TYPE definition only:
+               house Name { members };
+             → returns [StructDeclNode]
+
+          2. Struct TYPE definition with simultaneous variable declaration:
+               house Name { members } var1, var2 = {...}, ...;
+             → returns [StructDeclNode, VarDeclNode(var1), VarDeclNode(var2), ...]
+
+          3. Struct VARIABLE instantiation (type already defined):
+               house TypeName varName [= {...}] [, varName2 [= {...}]] ...;
+             → returns [VarDeclNode(varName), ...]
+
+        Spec G — Structures:
+          - Rule G.1: struct definitions can be global or local.
+          - Rule G.5: struct variables can be declared separately from the
+            struct definition.
+          - Rule G.6: struct variables can be initialized with brace values.
+
+        Returns a LIST of nodes (StructDeclNode and/or VarDeclNode).
+        The caller (_global) must handle lists by extending, not appending.
         """
         line, col = self._line(), self._col()
         self._eat("house")
         name_tok = self._eat("id")
         name = name_tok.lexeme if name_tok else ""
+        results = []
 
         if self._is("{"):
-            # Form 1: struct type definition
+            # Form 1/2: struct type definition (possibly with simultaneous vars)
             self._eat("{")
             members = self._struct_members()
             self._eat("}")
-            # Optional variable instance after the closing brace — skip it
+            results.append(StructDeclNode(name=name, members=members,
+                                          line=line, col=col))
+
+            # Parse optional simultaneous variable declarations after '}'
+            # e.g.  house Point { tile x; tile y; } p1, p2 = {5, 10};
             if self._is("id"):
-                self._eat("id")
+                var_tok = self._eat("id")
+                var_init = None
                 if self._is("="):
-                    self._skip_brace_init()
-            return StructDeclNode(name=name, members=members, line=line, col=col)
+                    var_init = self._parse_brace_init()
+                results.append(VarDeclNode(
+                    type=f"house {name}", name=var_tok.lexeme,
+                    init_value=var_init, is_const=False,
+                    is_array=False, array_dims=None,
+                    struct_type_name=name,
+                    line=var_tok.line, col=var_tok.column))
+                while self._is(","):
+                    self._eat(",")
+                    extra_tok = self._eat("id")
+                    extra_name = extra_tok.lexeme if extra_tok else ""
+                    extra_init = None
+                    if self._is("="):
+                        extra_init = self._parse_brace_init()
+                    results.append(VarDeclNode(
+                        type=f"house {name}", name=extra_name,
+                        init_value=extra_init, is_const=False,
+                        is_array=False, array_dims=None,
+                        struct_type_name=name,
+                        line=extra_tok.line if extra_tok else line,
+                        col=extra_tok.column if extra_tok else col))
         else:
-            # Form 2: variable instantiation — skip and return None
-            _var_tok = self._eat("id")
+            # Form 3: variable instantiation of an already-defined struct
+            # e.g.  house Student s1, s2 = {90, 85};
+            var_tok = self._eat("id")
+            var_name = var_tok.lexeme if var_tok else ""
+            var_init = None
             if self._is("="):
-                self._skip_brace_init()
-            return None
+                var_init = self._parse_brace_init()
+            results.append(VarDeclNode(
+                type=f"house {name}", name=var_name,
+                init_value=var_init, is_const=False,
+                is_array=False, array_dims=None,
+                struct_type_name=name,
+                line=line, col=col))
+            while self._is(","):
+                self._eat(",")
+                extra_tok = self._eat("id")
+                extra_name = extra_tok.lexeme if extra_tok else ""
+                extra_init = None
+                if self._is("="):
+                    extra_init = self._parse_brace_init()
+                results.append(VarDeclNode(
+                    type=f"house {name}", name=extra_name,
+                    init_value=extra_init, is_const=False,
+                    is_array=False, array_dims=None,
+                    struct_type_name=name,
+                    line=extra_tok.line if extra_tok else line,
+                    col=extra_tok.column if extra_tok else col))
+
+        return results
 
     def _struct_members(self) -> List[StructMemberNode]:
         """Parse all field declarations inside a struct body { ... }.

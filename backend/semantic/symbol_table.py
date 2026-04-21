@@ -251,6 +251,25 @@ class SymbolTable:
                 scope_level=0,
             ))
 
+        # rand(min, max) — returns a random tile (integer) in [min, max].
+        # Used by machine problems that need random number generation
+        # (e.g. number guessing games).  Treated as a built-in with a fixed
+        # two-parameter signature so the semantic analyzer validates arg count.
+        self.global_scope.define(Symbol(
+            name='rand',
+            type='tile',
+            kind='function',
+            return_type='tile',
+            params=[
+                Symbol(name='min', type='tile', kind='parameter',
+                       initialized=True, scope_level=0),
+                Symbol(name='max', type='tile', kind='parameter',
+                       initialized=True, scope_level=0),
+            ],
+            initialized=True,
+            scope_level=0,
+        ))
+
     # ── scope management ──────────────────────────────────────────────────────
     # The semantic analyzer calls enter_scope() at the start of every block
     # that introduces a new scope (functions, if-bodies, for-loops, etc.)

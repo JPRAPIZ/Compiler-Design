@@ -741,6 +741,13 @@ class TACInterpreter:
 
         Returns the result value if the function was handled, or None to
         signal that the caller should look up a user-defined function.
+
+        Built-in functions:
+          view / write — I/O (normally emitted as dedicated ops, handled here
+                         as a fallback)
+          rand(min, max) — returns a random tile (integer) between min and max
+                           inclusive.  Used for machine problems that require
+                           random number generation (e.g. number guessing games).
         """
         # view and write are emitted as dedicated op="view"/"write" instructions,
         # not as call instructions, so they should not normally appear here.
@@ -753,6 +760,13 @@ class TACInterpreter:
 
         if func_name == "write":
             return None  # void
+
+        # rand(min, max) — random integer in [min, max] inclusive
+        if func_name == "rand":
+            import random
+            lo = int(args[0]) if len(args) > 0 else 0
+            hi = int(args[1]) if len(args) > 1 else 100
+            return random.randint(lo, hi)
 
         return None  # not a built-in; caller will look up user function
 
