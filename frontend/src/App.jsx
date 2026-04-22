@@ -498,9 +498,15 @@ function createInterpreter(instructions, onOutput, onInput) {
         const raw = yield { signal: "INPUT", varName: dest, spec };
 
         if (isBrickArrayS) {
-          // Spec K.2 §13: store string char-by-char into brick array
+          // Spec K.2 §13 / F.5: store string char-by-char into brick array.
+          // Cap at declared array size to prevent out-of-bounds writes.
+          // Array size = count of existing flat keys (e.g. word[0]..word[5] → 6).
           const str = String(raw);
-          for (let ci = 0; ci < str.length; ci++) {
+          const prefix = dest + "[";
+          const arrSize = Object.keys(brickTargetMem).filter(k => k.startsWith(prefix)).length
+                       || str.length; // fallback if no keys found
+          const maxChars = Math.min(str.length, arrSize - 1); // leave room for null terminator
+          for (let ci = 0; ci < maxChars; ci++) {
             brickTargetMem[`${dest}[${ci}]`] = str.charCodeAt(ci);
           }
         } else {
@@ -510,7 +516,7 @@ function createInterpreter(instructions, onOutput, onInput) {
           else if (kind === "f") val = parseFloat(raw);
           else if (kind === "b")
             val = raw === "solid" || raw === "1" || raw === "true";
-          else if (kind === "c") val = String(raw)[0] ?? "";
+          else if (kind === "c") val = raw.length > 0 ? raw.charCodeAt(0) : 0;
           else val = String(raw);
 
           // Route to the correct memory (local vs global).
