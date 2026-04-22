@@ -320,13 +320,27 @@ class TACInterpreter:
                     raw = self._stdin.pop(0)
                     try:
                         if is_brick_array_s:
-                            # Spec K.2 §13: store string char-by-char into brick array
-                            for ci, ch in enumerate(raw):
-                                target_mem[f"{dest}[{ci}]"] = ord(ch)
+                            # Spec K.2 §13 / F.5: store string char-by-char into brick array.
+                            # Cap at the declared array size to prevent out-of-bounds writes.
+                            # The array size is determined by counting existing flat keys
+                            # (e.g. word[0]..word[5] → size 6) which were emitted by the
+                            # TAC generator's default-init pass.
+                            prefix = dest + "["
+                            arr_size = sum(1 for k in target_mem if k.startswith(prefix))
+                            if arr_size == 0:
+                                arr_size = len(raw)  # fallback: no limit known
+                            max_chars = min(len(raw), arr_size - 1)  # leave room for null terminator
+                            for ci in range(max_chars):
+                                target_mem[f"{dest}[{ci}]"] = ord(raw[ci])
                         elif kind == "s":
                             target_mem[dest] = raw
                         elif kind == "c":
-                            target_mem[dest] = raw[0] if raw else '\0'
+                            # Spec B.4: brick stores ASCII values as integers (0-127).
+                            # write("#c") reads one character and stores its ord() value,
+                            # matching how brick literals are represented in TAC
+                            # (e.g. 'Y' → 89).  Storing the raw string character would
+                            # cause comparison mismatches: str 'Y' != int 89.
+                            target_mem[dest] = ord(raw[0]) if raw else 0
                         elif kind == "f":
                             target_mem[dest] = float(raw)
                         elif kind == "b":
@@ -339,7 +353,7 @@ class TACInterpreter:
                         elif kind == "f":
                             target_mem[dest] = 0.0
                         elif kind == "c":
-                            target_mem[dest] = '\0'
+                            target_mem[dest] = 0  # brick default: ord('\0') = 0
                         else:
                             target_mem[dest] = 0
                 else:
@@ -350,7 +364,7 @@ class TACInterpreter:
                     elif kind == "f":
                         target_mem[dest] = 0.0
                     elif kind == "c":
-                        target_mem[dest] = '\0'
+                        target_mem[dest] = 0  # brick default: ord('\0') = 0
                     else:
                         target_mem[dest] = 0
 
