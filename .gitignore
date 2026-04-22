@@ -24,9 +24,11 @@ dist-ssr/
 *.sln
 *.sw?
 
-# Python cache
+# Python cache files
 __pycache__/
 *.py[cod]
+*.pyc
+*.pyo
 
 # Virtual environments
 .venv/
@@ -54,4 +56,5 @@ dist/
 *.egg-info/
 
 # OS
+.DS_Store
 Thumbs.db
