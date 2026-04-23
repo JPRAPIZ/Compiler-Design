@@ -895,7 +895,9 @@ function App() {
     applyErrorsToEditor([]);
   };
 
-  const handleDownload = () => {
+  const handleDownload = () => { return; /* disabled for exam */ };
+  const handleUpload = (e) => { return; /* disabled for exam */ };
+  {/*const handleDownload = () => {
     // Prompt the user for a filename so the displayed name updates
     // immediately in the Source Code panel header.  The browser download
     // dialog may rename again, but the state reflects the user's intent.
@@ -945,7 +947,7 @@ function App() {
     reader.readAsText(file);
     // Reset so the same file can be re-uploaded
     e.target.value = "";
-  };
+  };*/}
 
   const handleClear = () => {
     setErrors([]);
@@ -1045,7 +1047,22 @@ function App() {
               >
                 New
               </button>
+              {/* ── Temporarily disabled for Lab Exam ── */}
               <button
+                disabled
+                title="Open disabled during exam"
+                className="px-3 py-1.5 bg-[#222] text-gray-600 font-semibold rounded text-sm cursor-not-allowed"
+              >
+                Open
+              </button>
+              <button
+                disabled
+                title="Save disabled during exam"
+                className="px-3 py-1.5 bg-[#222] text-gray-600 font-semibold rounded text-sm cursor-not-allowed"
+              >
+                Save
+              </button>
+              {/*<button
                 onClick={() => fileInputRef.current?.click()}
                 title="Open .arCh file (Ctrl+O)"
                 className="px-3 py-1.5 bg-[#333] text-gray-300 font-semibold hover:bg-[#444] rounded text-sm"
@@ -1058,7 +1075,7 @@ function App() {
                 className="px-3 py-1.5 bg-[#333] text-gray-300 font-semibold hover:bg-[#444] rounded text-sm"
               >
                 Save
-              </button>
+              </button>*/}
               {isRunning ? (
                 <button
                   onClick={handleStop}
